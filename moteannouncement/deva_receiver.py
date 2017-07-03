@@ -1,16 +1,21 @@
 """deva_receiver.py: DeviceAnnouncement receiver with query capabilities"""
-import Queue
+from __future__ import print_function
+
+from six.moves import queue as Queue
 import signal
 import threading
 import time
 
+from enum import Enum
 from argconfparse.argconfparse import arg_hex2int
 from moteconnection.connection import Connection
 from moteconnection.message import MessageDispatcher, Message
 from simpledaemonlog.logsetup import setup_console, setup_file
 
-from moteannouncement.deva_packets import DeviceAnnouncementPacket, DeviceRequestPacket, DeviceDescriptionPacket,\
-    DeviceFeaturesPacket, DeviceFeatureRequestPacket, strtime
+from .deva_packets import (
+    DeviceAnnouncementPacket, DeviceFeaturesPacket, DeviceDescriptionPacket,
+    DeviceRequestPacket, DeviceFeatureRequestPacket, strtime
+)
 
 import logging
 log = logging.getLogger(__name__)
@@ -30,6 +35,12 @@ def print_green(s):
 
 class DAReceiver(object):
 
+    class State(Enum):
+        disabled = "disabled"
+        query = "query"
+        describe = "describe"
+        list_features = "list_features"
+
     def __init__(self, connection, address, period):
         self.address = address
 
@@ -42,7 +53,7 @@ class DAReceiver(object):
 
         self._timestamp = time.time()
 
-        self.state = "disabled"
+        self.state = self.State.disabled
         self._destination = None
         self._offset = 0
 
@@ -51,11 +62,11 @@ class DAReceiver(object):
     def poll(self, jump=False):
         if self._destination is not None:
             if time.time() - self._timestamp > self.period:
-                if self.state == "query":
+                if self.state == self.State.query:
                     d = DeviceRequestPacket()
-                elif self.state == "describe":
+                elif self.state == self.State.describe:
                     d = DeviceRequestPacket(DeviceRequestPacket.DEVA_DESCRIBE)
-                elif self.state == "list_features":
+                elif self.state == self.State.list_features:
                     d = DeviceFeatureRequestPacket(self._offset)
                 else:
                     d = None
@@ -78,27 +89,27 @@ class DAReceiver(object):
                         m.deserialize(p.payload)
                         print_green("{}| {}".format(strtime(time.time()), m))
 
-                        if self.state == "query":
-                            self.state = "describe"
+                        if self.state == self.State.query:
+                            self.state = self.State.describe
                     elif ptp == DeviceDescriptionPacket.DEVA_DESCRIPTION:
                         m = DeviceDescriptionPacket()
                         m.deserialize(p.payload)
                         print_green("{}| {}".format(strtime(time.time()), m))
 
-                        if self.state == "describe":
-                            self.state = "list_features"
+                        if self.state == self.State.describe:
+                            self.state = self.State.list_features
                             self._offset = 0
                     elif ptp == DeviceFeaturesPacket.DEVA_FEATURES:
                         m = DeviceFeaturesPacket()
                         m.deserialize(p.payload)
                         print_green("{}| {}".format(strtime(time.time()), m))
 
-                        if self.state == "list_features":
+                        if self.state == self.State.list_features:
                             self._offset = m.offset + len(m.features) / 16  # TODO remove 16 when no longer arr
 
                             # if self.offset >= m.total:
                             if len(m.features) == 0:
-                                self.state = "query"
+                                self.state = self.State.query
                     else:
                         log.warning("header {}".format(ptp))
                 else:
@@ -109,14 +120,17 @@ class DAReceiver(object):
 
     def query(self, destination):
         self._destination = destination
-        self.state = "query"
+        self.state = self.State.query
         self._timestamp = 0
 
 
 def main():
 
     import argparse
-    parser = argparse.ArgumentParser(description="DEVA Receiver", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description="DEVA Receiver",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+    )
     parser.add_argument("connection", help="Connection string, like sf@localhost:9002 or serial@/dev/ttyUSB0:115200")
 
     parser.add_argument("--source", default=0x0314, type=arg_hex2int, help="Own address")

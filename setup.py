@@ -21,6 +21,9 @@ setup(name="moteannouncement",
       license="MIT",
       platforms=["any"],
       packages=find_packages(),
-      install_requires=["moteconnection", "simpledaemonlog", "serdepa"],
+      install_requires=[
+          "moteconnection", "simpledaemonlog", "serdepa", "pytz", "argconfparse", "six",
+          "enum34"
+      ],
       scripts=[pjoin("bin", "moteannouncements")],
       zip_safe=False)

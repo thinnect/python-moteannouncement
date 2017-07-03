@@ -2,18 +2,12 @@
 
 from serdepa import SerdepaPacket, uint8, Array, nx_uint32, nx_int32, nx_int64, List
 
-import datetime
-import pytz
-import time
 import uuid
+
+from .utils import strtime, chunk
 
 __author__ = "Raido Pahtma"
 __license__ = "MIT"
-
-
-def strtime(utc_timestamp):
-    tpl = (datetime.datetime.fromtimestamp(0, tz=pytz.utc) + datetime.timedelta(seconds=utc_timestamp)).timetuple()
-    return time.strftime("%Y-%m-%dT%H:%M:%S", tpl)
 
 
 class DeviceAnnouncementPacket(SerdepaPacket):
@@ -142,7 +136,7 @@ class DeviceFeaturesPacket(SerdepaPacket):
             self.offset, self.total
         )
         ftrs = bytes(self.features.serialize()).encode("hex")
-        ftrs = list(map(lambda u: str(uuid.UUID(u)), map(''.join, zip(*[iter(ftrs)]*32))))
+        ftrs = [str(uuid.UUID(u)) for u in chunk(ftrs, 32)]
         return "{} {}".format(s, str(ftrs))
 
 
