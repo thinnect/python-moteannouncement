@@ -19,8 +19,9 @@ def chunk(sequence, length, truncate=False):
 
     :param collections.Sequence[T] sequence: input sequence
     :param int length: length of output chunks
-    :param bool truncate: truncate sequence if
-    :return: collections.Iterator[T]
+    :param bool truncate: truncate sequence if `len(sequence)` is not a multiple of `length`
+    :return: A generator of chunks of length `length` from `sequence`
+    :rtype: collections.Iterator[collections.Sequence[T]]
     """
     # TODO: This slices the sequence twice if truncate=True. Could change this into a generator and use a variable.
     # Probably over-optimizing here though...

@@ -4,12 +4,15 @@ from serdepa import SerdepaPacket, uint8, Array, nx_uint32, nx_int32, nx_int64, 
 
 import uuid
 
+from six import python_2_unicode_compatible
+
 from .utils import strtime, chunk
 
 __author__ = "Raido Pahtma"
 __license__ = "MIT"
 
 
+@python_2_unicode_compatible
 class DeviceAnnouncementPacket(SerdepaPacket):
     DEVA_ANNOUNCEMENT = 0x00
     _fields_ = [
@@ -73,6 +76,7 @@ class DeviceAnnouncementPacket(SerdepaPacket):
         )
 
 
+@python_2_unicode_compatible
 class DeviceDescriptionPacket(SerdepaPacket):
     DEVA_DESCRIPTION = 0x01
     _fields_ = [
@@ -109,6 +113,7 @@ class DeviceDescriptionPacket(SerdepaPacket):
         )
 
 
+@python_2_unicode_compatible
 class DeviceFeaturesPacket(SerdepaPacket):
     DEVA_FEATURES = 0x02
     _fields_ = [
@@ -140,6 +145,7 @@ class DeviceFeaturesPacket(SerdepaPacket):
         return "{} {}".format(s, str(ftrs))
 
 
+@python_2_unicode_compatible
 class DeviceRequestPacket(SerdepaPacket):
     DEVA_QUERY = 0x10
     DEVA_DESCRIBE = 0x11
@@ -154,6 +160,7 @@ class DeviceRequestPacket(SerdepaPacket):
         self.version = 0x01
 
 
+@python_2_unicode_compatible
 class DeviceFeatureRequestPacket(SerdepaPacket):
     DEVA_LIST_FEATURES = 0x12
     _fields_ = [
