@@ -1,10 +1,11 @@
 """deva_receiver.py: DeviceAnnouncement receiver with query capabilities"""
-from __future__ import print_function
+from __future__ import print_function, unicode_literals
 
 import time
 
 from enum import Enum
 from six.moves import queue as Queue
+import six
 
 from moteconnection.message import MessageDispatcher, Message
 from moteconnection.connection import Connection
@@ -22,6 +23,41 @@ __author__ = "Raido Pahtma"
 __license__ = "MIT"
 
 
+class NetworkAddressTranslator(dict):
+    """
+    An object to hold a guid to network address mappings.
+    """
+    def __init__(self):
+        super(NetworkAddressTranslator, self).__init__()
+        # FIXME: This should not hold that much memory, but will not be cleared, ever
+        self._original_data = {}
+
+    def __getitem__(self, key):
+        assert isinstance(key, six.string_types) and len(key) == 16
+
+        try:
+            return super(NetworkAddressTranslator, self).__getitem__(key)
+        except KeyError:
+            log.warning(
+                "Unknown GUID {}. Using default mapping of last four digits: {}".format(
+                    key, key[-4:]
+                )
+            )
+            return int(key[-4:], 16)
+
+    def add_info(self, source, packet):
+        assert isinstance(packet, DeviceAnnouncementPacket)
+        guid = six.binary_type(packet.guid.serialize()).encode("hex").upper()
+        if guid not in self or self[guid] != source:
+            self[guid] = source
+        self._original_data[guid] = packet      # Can be used to display latest uptime, announcement etc.
+
+    @property
+    def announcements(self):
+        return dict(self._original_data)
+
+
+@six.python_2_unicode_compatible
 class Query(object):
 
     class State(Enum):
@@ -31,10 +67,11 @@ class Query(object):
         list_features = "list_features"
         done = "done"
 
-    def __init__(self, destination, requests, retry=10):
+    def __init__(self, destination, requests, mapping, retry=10):
         self._retry = retry
         self._states = requests
         self._destination = destination
+        self._mapping = mapping
         self.state = self._states.pop(0) if self._states else self.State.done
         self._offset = 0
         self._outgoing_buffer = [self._construct_message()]
@@ -45,8 +82,7 @@ class Query(object):
 
     @property
     def destination_address(self):
-        # TODO: destination network address discovery
-        return int(self._destination[-4:], 16)
+        return self._mapping[self._destination]
 
     def get_message(self):
         """
@@ -55,14 +91,18 @@ class Query(object):
         :return: Message to be sent
         :rtype: moteconnection.message.Message | None
         """
-        try:
-            outgoing = self._outgoing_buffer[0]
-            if outgoing["taken_at"] < time.time() - self._retry:
-                return outgoing["message"]
-            else:
+        if self.state is not Query.State.done:
+            now = time.time()
+            try:
+                outgoing = self._outgoing_buffer[0]
+            except IndexError:
                 return None
-        except IndexError:
-            return None
+
+            if outgoing["taken_at"] <= now - self._retry:
+                outgoing["taken_at"] = now
+                return outgoing["message"]
+
+        return None
 
     def _construct_message(self):
         """
@@ -70,7 +110,6 @@ class Query(object):
 
         :return:
         """
-        # TODO: RETRIES!
         if self.state == self.State.query:
             d = DeviceRequestPacket()
         elif self.state == self.State.describe:
@@ -123,6 +162,9 @@ class Query(object):
             if m is not None:
                 self._outgoing_buffer[0] = m
 
+    def __str__(self):
+        return 'Query(destination={}, state={})'.format(self._destination, self.state)
+
 
 class DAReceiver(object):
     """
@@ -130,7 +172,15 @@ class DAReceiver(object):
     :type _pending_queries: dict[int, Query]
     """
 
-    def __init__(self, connection_string, address, period):
+    def __init__(self, connection_string, address, period, mapping=NetworkAddressTranslator()):
+        """
+
+        :param six.text_type connection_string: Connection string, like sf@localhost:9002 or
+                serial@/dev/ttyUSB0:115200
+        :param int address: The network address of the MURP on the gateway (eg 0x0310)
+        :param int period: The period of
+        :param mapping:
+        """
         self.address = address
         self._connection_string = connection_string
 
@@ -144,6 +194,7 @@ class DAReceiver(object):
         self.period = period
 
         self._pending_queries = {}
+        self._network_address_mapping = mapping
 
     @property
     def connection(self):
@@ -161,6 +212,7 @@ class DAReceiver(object):
         return self._dispatcher
 
     def __enter__(self):
+        assert self.connection is not None  # creates and establishes the connection
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -189,6 +241,9 @@ class DAReceiver(object):
 
         try:
             incoming_message = self._incoming.get(timeout=0.1)
+        except Queue.Empty:
+            pass
+        else:
             log.debug(incoming_message)
             if len(incoming_message.payload) > 0:
                 ptp = ord(incoming_message.payload[0])
@@ -208,6 +263,8 @@ class DAReceiver(object):
                 except ValueError:
                     log.exception("Malformed packet: %s", incoming_message)
                 else:
+                    if isinstance(packet, DeviceAnnouncementPacket):
+                        self._network_address_mapping.add_info(incoming_message.source, packet)
                     if incoming_message.source in self._pending_queries:
                         self._pending_queries[incoming_message.source].receive_packet(packet)
 
@@ -215,23 +272,20 @@ class DAReceiver(object):
             else:
                 log.error("len 0")
 
-        except Queue.Empty:
-            pass
-
-    def query(self, destination, query_types):
+    def query(self, destination, info=False, description=False, features=False):
         if (
                 destination not in self._pending_queries or
                 self._pending_queries[destination].state is not Query.State.done
         ):
             requests = []
-            if query_types["info"]:
+            if info:
                 requests.append(Query.State.query)
-            if query_types["description"]:
+            if description:
                 requests.append(Query.State.describe)
-            if query_types["features"]:
+            if features:
                 requests.append(Query.State.list_features)
 
-            query = Query(destination, requests, self.period)
+            query = Query(destination, requests, self._network_address_mapping, self.period)
             self._pending_queries[query.destination_address] = query
         else:
             log.warning("Active query already exists for %s", destination)
@@ -243,3 +297,7 @@ class DAReceiver(object):
             for destination, query in self._pending_queries.items()
             if query.state is not Query.State.done
         }
+
+    @property
+    def announcements(self):
+        return self._network_address_mapping.announcements

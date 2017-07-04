@@ -44,20 +44,20 @@ def main():
 
     signal.signal(signal.SIGINT, kbi_handler)
 
-    dar = DAReceiver(args.connection, args.source, args.period)
+    with DAReceiver(args.connection, args.source, args.period) as dar:
 
-    if args.destination is not None:
-        dar.query(
-            "{:016X}".format(args.destination),
-            query_types={"info": True, "description": True, "features": True}
-        )
+        if args.destination is not None:
+            dar.query(
+                "70B3D5589001{:04X}".format(args.destination),
+                info=True, description=True, features=True
+            )
 
-    with dar:
         while not interrupted.is_set():
             time.sleep(0.01)
             packet = dar.poll()
             if packet is not None:
                 print_green("{}| {}| {}".format(strtime(time.time()), packet.__class__.__name__, packet))
+                print_green(dar.announcements)
 
 
 if __name__ == "__main__":

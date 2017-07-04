@@ -18,7 +18,7 @@ receiver = DAReceiver(
 with receiver:
     receiver.query(
         "FFFFFFFFFFFF0610",
-        query_types={"info": True, "description": True, "features": True}
+        info=True, description=True, features=True
     )
     while True:
         try:

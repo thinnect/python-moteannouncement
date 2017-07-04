@@ -25,5 +25,6 @@ setup(name="moteannouncement",
           "moteconnection", "simpledaemonlog", "serdepa", "pytz", "argconfparse", "six",
           "enum34"
       ],
+      tests_require=["nose", "mock"],
       scripts=[pjoin("bin", "moteannouncements")],
       zip_safe=False)
