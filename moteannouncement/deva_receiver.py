@@ -1,20 +1,17 @@
 """deva_receiver.py: DeviceAnnouncement receiver with query capabilities"""
 from __future__ import print_function
 
-from six.moves import queue as Queue
-import signal
-import threading
 import time
 
 from enum import Enum
-from argconfparse.argconfparse import arg_hex2int
-from moteconnection.connection import Connection
+from six.moves import queue as Queue
+
 from moteconnection.message import MessageDispatcher, Message
-from simpledaemonlog.logsetup import setup_console, setup_file
+from moteconnection.connection import Connection
 
 from .deva_packets import (
     DeviceAnnouncementPacket, DeviceFeaturesPacket, DeviceDescriptionPacket,
-    DeviceRequestPacket, DeviceFeatureRequestPacket, strtime
+    DeviceRequestPacket, DeviceFeatureRequestPacket
 )
 
 import logging
@@ -25,144 +22,224 @@ __author__ = "Raido Pahtma"
 __license__ = "MIT"
 
 
-def print_red(s):
-    print("\033[91m{}\033[0m".format(s))
-
-
-def print_green(s):
-    print("\033[92m{}\033[0m".format(s))
-
-
-class DAReceiver(object):
+class Query(object):
 
     class State(Enum):
-        disabled = "disabled"
+        __order__ = 'query describe list_features done'     # only needed in 2.x
         query = "query"
         describe = "describe"
         list_features = "list_features"
+        done = "done"
 
-    def __init__(self, connection, address, period):
+    def __init__(self, destination, requests, retry=10):
+        self._retry = retry
+        self._states = requests
+        self._destination = destination
+        self.state = self._states.pop(0) if self._states else self.State.done
+        self._offset = 0
+        self._outgoing_buffer = [self._construct_message()]
+
+    @property
+    def destination(self):
+        return self._destination
+
+    @property
+    def destination_address(self):
+        # TODO: destination network address discovery
+        return int(self._destination[-4:], 16)
+
+    def get_message(self):
+        """
+        Returns an outgoing message
+
+        :return: Message to be sent
+        :rtype: moteconnection.message.Message | None
+        """
+        try:
+            outgoing = self._outgoing_buffer[0]
+            if outgoing["taken_at"] < time.time() - self._retry:
+                return outgoing["message"]
+            else:
+                return None
+        except IndexError:
+            return None
+
+    def _construct_message(self):
+        """
+        Returns the correct outgoing message or None
+
+        :return:
+        """
+        # TODO: RETRIES!
+        if self.state == self.State.query:
+            d = DeviceRequestPacket()
+        elif self.state == self.State.describe:
+            d = DeviceRequestPacket(DeviceRequestPacket.DEVA_DESCRIBE)
+        elif self.state == self.State.list_features:
+            d = DeviceFeatureRequestPacket(self._offset)
+        else:
+            d = None
+        if d is not None:
+            return {
+                "message": Message(0xDA, self.destination_address, d.serialize()),
+                "taken_at": 0
+            }
+
+    def receive_packet(self, packet):
+        """
+
+        :param DeviceAnnouncementPacket | DeviceDescriptionPacket | DeviceFeaturesPacket packet:
+        """
+
+        if (
+                isinstance(packet, DeviceAnnouncementPacket) and
+                packet.header == DeviceAnnouncementPacket.DEVA_ANNOUNCEMENT
+        ):
+            if self.state is self.State.query:
+                self.state = self._states.pop(0) if self._states else self.State.done
+        elif (
+                isinstance(packet, DeviceDescriptionPacket) and
+                packet.header == DeviceDescriptionPacket.DEVA_DESCRIPTION
+        ):
+            if self.state is self.State.describe:
+                self.state = self._states.pop(0) if self._states else self.State.done
+                self._offset = 0
+        elif (
+                isinstance(packet, DeviceFeaturesPacket) and
+                packet.header == DeviceFeaturesPacket.DEVA_FEATURES
+        ):
+
+            if self.state is self.State.list_features:
+                self._offset = packet.offset + len(packet.features) / 16  # TODO remove 16 when no longer arr
+
+                # if self.offset >= m.total:
+                if len(packet.features) == 0:
+                    self.state = self._states.pop(0) if self._states else self.State.done
+        else:
+            raise ValueError("Unknown packet {}".format(packet.__class__.__name__))
+
+        if self.state is not self.State.done:
+            m = self._construct_message()
+            if m is not None:
+                self._outgoing_buffer[0] = m
+
+
+class DAReceiver(object):
+    """
+    :type address: six.text_type
+    :type _pending_queries: dict[int, Query]
+    """
+
+    def __init__(self, connection_string, address, period):
         self.address = address
+        self._connection_string = connection_string
+
+        self._connection = None
+        self._dispatcher = None
 
         self._incoming = Queue.Queue()
-        self._dispatcher = MessageDispatcher(self.address, 0xFF)
-        self._dispatcher.register_receiver(0xDA, self._incoming)
-
-        self._connection = connection
-        self._connection.register_dispatcher(self._dispatcher)
 
         self._timestamp = time.time()
 
-        self.state = self.State.disabled
-        self._destination = None
-        self._offset = 0
-
         self.period = period
 
-    def poll(self, jump=False):
-        if self._destination is not None:
-            if time.time() - self._timestamp > self.period:
-                if self.state == self.State.query:
-                    d = DeviceRequestPacket()
-                elif self.state == self.State.describe:
-                    d = DeviceRequestPacket(DeviceRequestPacket.DEVA_DESCRIBE)
-                elif self.state == self.State.list_features:
-                    d = DeviceFeatureRequestPacket(self._offset)
-                else:
-                    d = None
+        self._pending_queries = {}
 
-                if d is not None:
-                    msg = Message(0xDA, self._destination, d.serialize())
-                    log.debug(msg)
-                    self._connection.send(msg)
+    @property
+    def connection(self):
+        if self._connection is None:
+            self._connection = Connection()
+            self._connection.connect(self._connection_string, reconnect=10)
+            self._connection.register_dispatcher(self.dispatcher)
+        return self._connection
+
+    @property
+    def dispatcher(self):
+        if self._dispatcher is None:
+            self._dispatcher = MessageDispatcher(self.address, 0xFF)
+            self._dispatcher.register_receiver(0xDA, self._incoming)
+        return self._dispatcher
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.connection.join()
+
+    def poll(self, jump=False):
+        # Remove queries that are done
+        for destination, query in dict(self._pending_queries).items():
+            if query.state is Query.State.done:
+                del self._pending_queries[destination]
+
+        # Select a semi-random query to
+        if self._pending_queries:
+            if time.time() - self._timestamp > self.period:
+                out_message = None
+                for query in self._pending_queries.values():
+                    out_message = query.get_message()
+                    if out_message is not None:
+                        break
+
+                if out_message is not None:
+                    log.debug(out_message)
+                    self.connection.send(out_message)
 
                 self._timestamp = time.time()
 
         try:
-            p = self._incoming.get(timeout=0.1)
-            log.debug(p)
-            if self._destination is None or self._destination == p.source:
-                if len(p.payload) > 0:
-                    ptp = ord(p.payload[0])
-                    if ptp == DeviceAnnouncementPacket.DEVA_ANNOUNCEMENT:
-                        m = DeviceAnnouncementPacket()
-                        m.deserialize(p.payload)
-                        print_green("{}| {}".format(strtime(time.time()), m))
+            incoming_message = self._incoming.get(timeout=0.1)
+            log.debug(incoming_message)
+            if len(incoming_message.payload) > 0:
+                ptp = ord(incoming_message.payload[0])
+                if ptp == DeviceAnnouncementPacket.DEVA_ANNOUNCEMENT:
+                    packet = DeviceAnnouncementPacket()
+                elif ptp == DeviceDescriptionPacket.DEVA_DESCRIPTION:
+                    packet = DeviceDescriptionPacket()
+                elif ptp == DeviceFeaturesPacket.DEVA_FEATURES:
+                    packet = DeviceFeaturesPacket()
 
-                        if self.state == self.State.query:
-                            self.state = self.State.describe
-                    elif ptp == DeviceDescriptionPacket.DEVA_DESCRIPTION:
-                        m = DeviceDescriptionPacket()
-                        m.deserialize(p.payload)
-                        print_green("{}| {}".format(strtime(time.time()), m))
-
-                        if self.state == self.State.describe:
-                            self.state = self.State.list_features
-                            self._offset = 0
-                    elif ptp == DeviceFeaturesPacket.DEVA_FEATURES:
-                        m = DeviceFeaturesPacket()
-                        m.deserialize(p.payload)
-                        print_green("{}| {}".format(strtime(time.time()), m))
-
-                        if self.state == self.State.list_features:
-                            self._offset = m.offset + len(m.features) / 16  # TODO remove 16 when no longer arr
-
-                            # if self.offset >= m.total:
-                            if len(m.features) == 0:
-                                self.state = self.State.query
-                    else:
-                        log.warning("header {}".format(ptp))
                 else:
-                    log.error("len 0")
+                    log.warning("header {}".format(ptp))
+                    return
+
+                try:
+                    packet.deserialize(incoming_message.payload)
+                except ValueError:
+                    log.exception("Malformed packet: %s", incoming_message)
+                else:
+                    if incoming_message.source in self._pending_queries:
+                        self._pending_queries[incoming_message.source].receive_packet(packet)
+
+                    return packet
+            else:
+                log.error("len 0")
 
         except Queue.Empty:
             pass
 
-    def query(self, destination):
-        self._destination = destination
-        self.state = self.State.query
-        self._timestamp = 0
+    def query(self, destination, query_types):
+        if (
+                destination not in self._pending_queries or
+                self._pending_queries[destination].state is not Query.State.done
+        ):
+            requests = []
+            if query_types["info"]:
+                requests.append(Query.State.query)
+            if query_types["description"]:
+                requests.append(Query.State.describe)
+            if query_types["features"]:
+                requests.append(Query.State.list_features)
 
+            query = Query(destination, requests, self.period)
+            self._pending_queries[query.destination_address] = query
+        else:
+            log.warning("Active query already exists for %s", destination)
 
-def main():
-
-    import argparse
-    parser = argparse.ArgumentParser(
-        description="DEVA Receiver",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter
-    )
-    parser.add_argument("connection", help="Connection string, like sf@localhost:9002 or serial@/dev/ttyUSB0:115200")
-
-    parser.add_argument("--source", default=0x0314, type=arg_hex2int, help="Own address")
-    parser.add_argument("--destination", default=None, type=arg_hex2int, help="Ping destination")
-    parser.add_argument("--period", default=10, type=int, help="Request period")
-    parser.add_argument("--logging", default=None)
-    args = parser.parse_args()
-
-    setup_console(color=True, settings=args.logging)
-    setup_file("deva_receiver", settings=args.logging)
-
-    interrupted = threading.Event()
-
-    def kbi_handler(sig, frm):
-        interrupted.set()
-
-    signal.signal(signal.SIGINT, kbi_handler)
-
-    con = Connection()
-    con.connect(args.connection, reconnect=10)
-
-    dar = DAReceiver(con, args.source, args.period)
-
-    if args.destination is not None:
-        dar.query(args.destination)
-
-    while not interrupted.is_set():
-        time.sleep(0.01)
-        dar.poll()
-
-    con.disconnect()
-    con.join()
-
-if __name__ == "__main__":
-    main()
+    @property
+    def active_queries(self):
+        return {
+            destination: query
+            for destination, query in self._pending_queries.items()
+            if query.state is not Query.State.done
+        }

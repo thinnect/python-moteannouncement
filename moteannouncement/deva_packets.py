@@ -145,7 +145,6 @@ class DeviceFeaturesPacket(SerdepaPacket):
         return "{} {}".format(s, str(ftrs))
 
 
-@python_2_unicode_compatible
 class DeviceRequestPacket(SerdepaPacket):
     DEVA_QUERY = 0x10
     DEVA_DESCRIBE = 0x11
@@ -160,7 +159,6 @@ class DeviceRequestPacket(SerdepaPacket):
         self.version = 0x01
 
 
-@python_2_unicode_compatible
 class DeviceFeatureRequestPacket(SerdepaPacket):
     DEVA_LIST_FEATURES = 0x12
     _fields_ = [
