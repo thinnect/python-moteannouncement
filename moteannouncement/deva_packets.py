@@ -1,10 +1,12 @@
 """deva_packets.py: DeviceAnnouncement packets."""
 
+from datetime import datetime
+
 from serdepa import SerdepaPacket, uint8, Array, nx_uint32, nx_int32, nx_int64, List
 
 import uuid
 
-from six import python_2_unicode_compatible
+import six
 
 from .utils import strtime, chunk
 
@@ -12,8 +14,14 @@ __author__ = "Raido Pahtma"
 __license__ = "MIT"
 
 
-@python_2_unicode_compatible
-class DeviceAnnouncementPacket(SerdepaPacket):
+class TimestampMixin(object):
+    def deserialize(self, *args, **kwargs):
+        self.arrived = datetime.utcnow().replace(tzinfo=None)
+        super(TimestampMixin, self).deserialize(*args, **kwargs)
+
+
+@six.python_2_unicode_compatible
+class DeviceAnnouncementPacket(TimestampMixin, SerdepaPacket):
     DEVA_ANNOUNCEMENT = 0x00
     _fields_ = [
         ("header", uint8),
@@ -76,8 +84,8 @@ class DeviceAnnouncementPacket(SerdepaPacket):
         )
 
 
-@python_2_unicode_compatible
-class DeviceDescriptionPacket(SerdepaPacket):
+@six.python_2_unicode_compatible
+class DeviceDescriptionPacket(TimestampMixin, SerdepaPacket):
     DEVA_DESCRIPTION = 0x01
     _fields_ = [
         ("header", uint8),
@@ -113,8 +121,8 @@ class DeviceDescriptionPacket(SerdepaPacket):
         )
 
 
-@python_2_unicode_compatible
-class DeviceFeaturesPacket(SerdepaPacket):
+@six.python_2_unicode_compatible
+class DeviceFeaturesPacket(TimestampMixin, SerdepaPacket):
     DEVA_FEATURES = 0x02
     _fields_ = [
         ("header", uint8),
@@ -140,9 +148,12 @@ class DeviceFeaturesPacket(SerdepaPacket):
             self.boot_number,
             self.offset, self.total
         )
-        ftrs = bytes(self.features.serialize()).encode("hex")
-        ftrs = [str(uuid.UUID(u)) for u in chunk(ftrs, 32)]
-        return "{} {}".format(s, str(ftrs))
+        return "{} {}".format(s, str(self.feature_uuids))
+
+    @property
+    def feature_uuids(self):
+        ftrs = six.binary_type(self.features.serialize()).encode("hex")
+        return [str(uuid.UUID(u)) for u in chunk(ftrs, 32)]
 
 
 class DeviceRequestPacket(SerdepaPacket):

@@ -2,6 +2,7 @@
 from __future__ import print_function, unicode_literals
 
 import time
+from itertools import chain
 
 from enum import Enum
 from six.moves import queue as Queue
@@ -54,6 +55,9 @@ class NetworkAddressTranslator(dict):
 
     @property
     def announcements(self):
+        """
+        :rtype: dict[six.text_type, DeviceAnnouncementPacket]
+        """
         return dict(self._original_data)
 
 
@@ -69,12 +73,24 @@ class Query(object):
 
     def __init__(self, destination, requests, mapping, retry=10):
         self._retry = retry
+        # TODO: seems like a hack that obfuscates what's going on
+        # if we have no device information from said node, we should request it first
+        if destination not in mapping:
+            if Query.State.query not in requests:
+                requests = [Query.State.query] + requests
         self._states = requests
+        self._request = list(requests)
         self._destination = destination
         self._mapping = mapping
         self.state = self._states.pop(0) if self._states else self.State.done
         self._offset = 0
         self._outgoing_buffer = [self._construct_message()]
+        self._incoming_messages = []
+        self._last_contact = (
+            mapping.announcements[destination].arrived
+            if destination in mapping.announcements else
+            None
+        )
 
     @property
     def destination(self):
@@ -83,6 +99,10 @@ class Query(object):
     @property
     def destination_address(self):
         return self._mapping[self._destination]
+
+    @property
+    def last_contact(self):
+        return self._last_contact.isoformat() if self._last_contact is not None else None
 
     def get_message(self):
         """
@@ -128,6 +148,8 @@ class Query(object):
         """
 
         :param DeviceAnnouncementPacket | DeviceDescriptionPacket | DeviceFeaturesPacket packet:
+        :return: List of packets to emit
+        :rtype: None | list[DeviceAnnouncementPacket | DeviceDescriptionPacket | DeviceFeaturesPacket]
         """
 
         if (
@@ -142,7 +164,6 @@ class Query(object):
         ):
             if self.state is self.State.describe:
                 self.state = self._states.pop(0) if self._states else self.State.done
-                self._offset = 0
         elif (
                 isinstance(packet, DeviceFeaturesPacket) and
                 packet.header == DeviceFeaturesPacket.DEVA_FEATURES
@@ -157,13 +178,25 @@ class Query(object):
         else:
             raise ValueError("Unknown packet {}".format(packet.__class__.__name__))
 
+        if not isinstance(packet, DeviceAnnouncementPacket):
+            if not self._incoming_messages:
+                self._incoming_messages = [self._mapping.announcements[self._destination]]
+        self._incoming_messages.append(packet)
+        self._last_contact = packet.arrived
+
         if self.state is not self.State.done:
             m = self._construct_message()
             if m is not None:
                 self._outgoing_buffer[0] = m
+        else:
+            return self._incoming_messages
 
     def __str__(self):
-        return 'Query(destination={}, state={})'.format(self._destination, self.state)
+        states = " -> ".join(
+            "<{}>".format(s.name) if s == self.state else "{}".format(s.name)
+            for s in chain(self._request, [Query.State.done])
+        )
+        return 'Query(destination={}, state=[{}])'.format(self._destination, states)
 
 
 class DAReceiver(object):
@@ -218,7 +251,12 @@ class DAReceiver(object):
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.connection.join()
 
-    def poll(self, jump=False):
+    def poll(self):
+        """
+
+        :return:
+        :rtype: None | list[DeviceAnnouncementPacket | DeviceDescriptionPacket | DeviceFeaturesPacket]
+        """
         # Remove queries that are done
         for destination, query in dict(self._pending_queries).items():
             if query.state is Query.State.done:
@@ -245,32 +283,27 @@ class DAReceiver(object):
             pass
         else:
             log.debug(incoming_message)
-            if len(incoming_message.payload) > 0:
-                ptp = ord(incoming_message.payload[0])
-                if ptp == DeviceAnnouncementPacket.DEVA_ANNOUNCEMENT:
-                    packet = DeviceAnnouncementPacket()
-                elif ptp == DeviceDescriptionPacket.DEVA_DESCRIPTION:
-                    packet = DeviceDescriptionPacket()
-                elif ptp == DeviceFeaturesPacket.DEVA_FEATURES:
-                    packet = DeviceFeaturesPacket()
-
-                else:
-                    log.warning("header {}".format(ptp))
-                    return
-
-                try:
-                    packet.deserialize(incoming_message.payload)
-                except ValueError:
-                    log.exception("Malformed packet: %s", incoming_message)
-                else:
-                    if isinstance(packet, DeviceAnnouncementPacket):
-                        self._network_address_mapping.add_info(incoming_message.source, packet)
-                    if incoming_message.source in self._pending_queries:
-                        self._pending_queries[incoming_message.source].receive_packet(packet)
-
-                    return packet
+            try:
+                packet = self._deserialize(incoming_message)
+            except ValueError:
+                log.exception("Error deserializing incoming packet: %s", incoming_message)
             else:
-                log.error("len 0")
+
+                if isinstance(packet, DeviceAnnouncementPacket):
+                    self._network_address_mapping.add_info(incoming_message.source, packet)
+
+                # if this packet belongs to a pending query, let it decide
+                if incoming_message.source in self._pending_queries:
+                    return_value = self._pending_queries[incoming_message.source].receive_packet(packet)
+                # otherwise emit it
+                else:
+                    #  Should be a DeviceAnnouncementPacket, but other agents may also be requesting data
+                    if isinstance(packet, DeviceAnnouncementPacket):
+                        return_value = [packet]
+                    else:
+                        return_value = None
+
+                return return_value
 
     def query(self, destination, info=False, description=False, features=False):
         if (
@@ -293,11 +326,43 @@ class DAReceiver(object):
     @property
     def active_queries(self):
         return {
-            destination: query
-            for destination, query in self._pending_queries.items()
+            query.destination: query
+            for query in self._pending_queries.values()
             if query.state is not Query.State.done
         }
 
     @property
     def announcements(self):
         return self._network_address_mapping.announcements
+
+    @staticmethod
+    def _deserialize(message):
+        """
+
+        :param moteconnection.message.Message message: incoming message
+        :raises ValueError: When unable to deserialize
+        :rtype: DeviceAnnouncementPacket | DeviceDescriptionPacket | DeviceFeaturesPacket
+        :returns: Deserialized packet
+        """
+        if len(message.payload) > 0:
+            ptp = ord(message.payload[0])
+            if ptp == DeviceAnnouncementPacket.DEVA_ANNOUNCEMENT:
+                packet = DeviceAnnouncementPacket()
+            elif ptp == DeviceDescriptionPacket.DEVA_DESCRIPTION:
+                packet = DeviceDescriptionPacket()
+            elif ptp == DeviceFeaturesPacket.DEVA_FEATURES:
+                packet = DeviceFeaturesPacket()
+
+            else:
+                log.warning("header {}".format(ptp))
+                raise ValueError("header {}".format(ptp))
+
+            try:
+                packet.deserialize(message.payload)
+            except ValueError:
+                log.exception("Malformed packet: %s", message)
+                raise
+        else:
+            raise ValueError("len 0")
+
+        return packet

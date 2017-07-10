@@ -29,7 +29,7 @@ class NetworkAddressTranslatorTester(TestCase):
         self.assertTrue(logger.warning.called)
 
     def test_add_info(self):
-        packet = MagicMock(spec=DeviceAnnouncementPacket)
+        packet = MagicMock(spec=DeviceAnnouncementPacket, arrived=None)
         packet.guid.serialize.return_value = six.binary_type(b'\x00\x00\x00\x00\x00\x00\xAA\xFF')
         self.assertEqual(self.network_address_translator['000000000000AAFF'], 0xAAFF)
         self.network_address_translator.add_info(0xAABB, packet)
@@ -43,6 +43,10 @@ class QueryTester(TestCase):
     def setUp(self):
         self.mapping = MagicMock(spec=NetworkAddressTranslator)
         self.mapping.__getitem__.return_value = 0x0101
+        self.mapping.__contains__.return_value = True
+
+    def tearDown(self):
+        del self.mapping
 
     def test_info_query(self, time_mock):
         time_mock.time.side_effect = [1, 1, 2, 10]
@@ -64,7 +68,11 @@ class QueryTester(TestCase):
         self.assertEqual(message.destination, 0x0101)
         self.assertEqual(message.payload, b'\x10\x01')
 
-        packet = MagicMock(spec=DeviceAnnouncementPacket, header=DeviceAnnouncementPacket.DEVA_ANNOUNCEMENT)
+        packet = MagicMock(
+            spec=DeviceAnnouncementPacket,
+            header=DeviceAnnouncementPacket.DEVA_ANNOUNCEMENT,
+            arrived=None
+        )
         query.receive_packet(packet)
 
         self.assertIs(query.state, Query.State.done)
@@ -84,7 +92,11 @@ class QueryTester(TestCase):
         self.assertEqual(message.destination, 0x0101)
         self.assertEqual(message.payload, b'\x11\x01')
 
-        packet = MagicMock(spec=DeviceDescriptionPacket, header=DeviceDescriptionPacket.DEVA_DESCRIPTION)
+        packet = MagicMock(
+            spec=DeviceDescriptionPacket,
+            header=DeviceDescriptionPacket.DEVA_DESCRIPTION,
+            arrived=None
+        )
         query.receive_packet(packet)
 
         self.assertIs(query.state, Query.State.done)
@@ -108,7 +120,8 @@ class QueryTester(TestCase):
             spec=DeviceFeaturesPacket,
             header=DeviceFeaturesPacket.DEVA_FEATURES,
             features=b'\x12\x54\xF2\x45\x12\x54\xF2\x45\x12\x54\xF2\x45\x12\x54\xF2\x45',
-            offset=0
+            offset=0,
+            arrived=None
         )
         query.receive_packet(packet)
 
@@ -123,7 +136,8 @@ class QueryTester(TestCase):
             spec=DeviceFeaturesPacket,
             header=DeviceFeaturesPacket.DEVA_FEATURES,
             features=b'\x12\x54\xF2\x45\x12\x54\xF2\x45\x12\x54\xF2\x45\x12\x54\xF2\x45',
-            offset=1
+            offset=1,
+            arrived=None
         )
         query.receive_packet(packet)
 
@@ -138,7 +152,8 @@ class QueryTester(TestCase):
             spec=DeviceFeaturesPacket,
             header=DeviceFeaturesPacket.DEVA_FEATURES,
             features=b'',
-            offset=2
+            offset=2,
+            arrived=None
         )
         query.receive_packet(packet)
 
@@ -166,7 +181,8 @@ class QueryTester(TestCase):
                 b'\x12\x54\xF2\x45\x12\x54\xF2\x45\x12\x54\xF2\x45\x12\x54\xF2\x45'
                 b'\x12\x54\xF2\x45\x12\x54\xF2\x45\x12\x54\xF2\x45\x12\x54\xF2\x45'
             ),
-            offset=0
+            offset=0,
+            arrived=None
         )
         query.receive_packet(packet)
 
@@ -181,7 +197,8 @@ class QueryTester(TestCase):
             spec=DeviceFeaturesPacket,
             header=DeviceFeaturesPacket.DEVA_FEATURES,
             features=b'',
-            offset=2
+            offset=2,
+            arrived=None
         )
         query.receive_packet(packet)
 
@@ -202,7 +219,11 @@ class QueryTester(TestCase):
         self.assertEqual(message.destination, 0x0101)
         self.assertEqual(message.payload, b'\x10\x01')
 
-        packet = MagicMock(spec=DeviceAnnouncementPacket, header=DeviceAnnouncementPacket.DEVA_ANNOUNCEMENT)
+        packet = MagicMock(
+            spec=DeviceAnnouncementPacket,
+            header=DeviceAnnouncementPacket.DEVA_ANNOUNCEMENT,
+            arrived=None
+        )
         query.receive_packet(packet)
 
         self.assertIs(query.state, Query.State.describe)
@@ -212,7 +233,11 @@ class QueryTester(TestCase):
         self.assertEqual(message.destination, 0x0101)
         self.assertEqual(message.payload, b'\x11\x01')
 
-        packet = MagicMock(spec=DeviceDescriptionPacket, header=DeviceDescriptionPacket.DEVA_DESCRIPTION)
+        packet = MagicMock(
+            spec=DeviceDescriptionPacket,
+            header=DeviceDescriptionPacket.DEVA_DESCRIPTION,
+            arrived=None
+        )
         query.receive_packet(packet)
 
         self.assertIs(query.state, Query.State.list_features)
@@ -229,7 +254,8 @@ class QueryTester(TestCase):
                 b'\x12\x54\xF2\x45\x12\x54\xF2\x45\x12\x54\xF2\x45\x12\x54\xF2\x45'
                 b'\x12\x54\xF2\x45\x12\x54\xF2\x45\x12\x54\xF2\x45\x12\x54\xF2\x45'
             ),
-            offset=0
+            offset=0,
+            arrived=None
         )
         query.receive_packet(packet)
 
@@ -244,7 +270,85 @@ class QueryTester(TestCase):
             spec=DeviceFeaturesPacket,
             header=DeviceFeaturesPacket.DEVA_FEATURES,
             features=b'',
-            offset=2
+            offset=2,
+            arrived=None
+        )
+        query.receive_packet(packet)
+
+        self.assertIs(query.state, Query.State.done)
+
+        # no more messages should come out once the state is at `done`
+        self.assertIs(query.get_message(), None)
+
+    def test_no_info_query(self, time_mock):
+        time_mock.time.side_effect = [1, 2, 3, 4]
+        requests = [Query.State.describe, Query.State.list_features]
+        self.mapping.__contains__.return_value = False
+
+        query = Query('000000000000AAFF', list(requests), self.mapping, retry=1)
+
+        self.assertEqual(query._request, [Query.State.query]+requests)
+
+        self.assertIs(query.state, Query.State.query)
+
+        # time.time() is called for the first time - result = 1
+        message = query.get_message()
+        self.assertEqual(message.destination, 0x0101)
+        self.assertEqual(message.payload, b'\x10\x01')
+
+        packet = MagicMock(
+            spec=DeviceAnnouncementPacket,
+            header=DeviceAnnouncementPacket.DEVA_ANNOUNCEMENT,
+            arrived=None
+        )
+        query.receive_packet(packet)
+
+        self.assertIs(query.state, Query.State.describe)
+
+        # time.time() is called for the second time - result = 2
+        message = query.get_message()
+        self.assertEqual(message.destination, 0x0101)
+        self.assertEqual(message.payload, b'\x11\x01')
+
+        packet = MagicMock(
+            spec=DeviceDescriptionPacket,
+            header=DeviceDescriptionPacket.DEVA_DESCRIPTION,
+            arrived=None
+        )
+        query.receive_packet(packet)
+
+        self.assertIs(query.state, Query.State.list_features)
+
+        # time.time() is called for the first time - result = 1
+        message = query.get_message()
+        self.assertEqual(message.destination, 0x0101)
+        self.assertEqual(message.payload, b'\x12\x01\x00')
+
+        packet = MagicMock(
+            spec=DeviceFeaturesPacket,
+            header=DeviceFeaturesPacket.DEVA_FEATURES,
+            features=(
+                b'\x12\x54\xF2\x45\x12\x54\xF2\x45\x12\x54\xF2\x45\x12\x54\xF2\x45'
+                b'\x12\x54\xF2\x45\x12\x54\xF2\x45\x12\x54\xF2\x45\x12\x54\xF2\x45'
+            ),
+            offset=0,
+            arrived=None
+        )
+        query.receive_packet(packet)
+
+        self.assertIs(query.state, Query.State.list_features)
+
+        # time.time() is called for the second time - result = 2
+        message = query.get_message()
+        self.assertEqual(message.destination, 0x0101)
+        self.assertEqual(message.payload, b'\x12\x01\x02')
+
+        packet = MagicMock(
+            spec=DeviceFeaturesPacket,
+            header=DeviceFeaturesPacket.DEVA_FEATURES,
+            features=b'',
+            offset=2,
+            arrived=None
         )
         query.receive_packet(packet)
 
@@ -284,7 +388,8 @@ class DeviceAnnouncementReceiverTester(TestCase):
         queue_mock.Empty = queue.Empty
         receiver = DAReceiver('', 0x0001, 1)
         message = receiver.poll()
-        self.assertIsInstance(message, DeviceAnnouncementPacket)
+        self.assertTrue(len(message) == 1)
+        self.assertIsInstance(message[0], DeviceAnnouncementPacket)
         message = receiver.poll()
         self.assertIs(message, None)
 
