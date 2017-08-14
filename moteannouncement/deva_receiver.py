@@ -20,7 +20,7 @@ import logging
 log = logging.getLogger(__name__)
 
 
-__author__ = "Raido Pahtma"
+__author__ = "Raido Pahtma, Kaarel Ratas"
 __license__ = "MIT"
 
 
@@ -34,23 +34,34 @@ class NetworkAddressTranslator(dict):
         self._original_data = {}
 
     def __getitem__(self, key):
-        assert isinstance(key, six.string_types) and len(key) == 16
-
-        try:
-            return super(NetworkAddressTranslator, self).__getitem__(key)
-        except KeyError:
-            log.warning(
-                "Unknown GUID {}. Using default mapping of last four digits: {}".format(
-                    key, key[-4:]
+        if isinstance(key, six.string_types) and len(key) == 16:
+            try:
+                return super(NetworkAddressTranslator, self).__getitem__(key)
+            except KeyError:
+                log.warning(
+                    "Unknown GUID {}. Using default mapping of last four digits: {}".format(
+                        key, key[-4:]
+                    )
                 )
-            )
-            return int(key[-4:], 16)
+                return int(key[-4:], 16)
+        if isinstance(key, int):
+            try:
+                return super(NetworkAddressTranslator, self).__getitem__(key)
+            except KeyError:
+                log.warning(
+                    "Unknown address {}. Returning None".format(
+                        key
+                    )
+                )
+                return None
+        raise TypeError("Address translator requires GUID or integer address!")
 
     def add_info(self, source, packet):
         assert isinstance(packet, DeviceAnnouncementPacket)
         guid = six.binary_type(packet.guid.serialize()).encode("hex").upper()
         if guid not in self or self[guid] != source:
             self[guid] = source
+            self[source] = guid
         self._original_data[guid] = packet      # Can be used to display latest uptime, announcement etc.
 
     @property
@@ -71,24 +82,25 @@ class Query(object):
         list_features = "list_features"
         done = "done"
 
-    def __init__(self, destination, requests, mapping, retry=10):
+    def __init__(self, guid, addr, requests, mapping, retry=10):
         self._retry = retry
         # TODO: seems like a hack that obfuscates what's going on
         # if we have no device information from said node, we should request it first
-        if destination not in mapping:
+        if guid not in mapping:
             if Query.State.query not in requests:
                 requests = [Query.State.query] + requests
         self._states = requests
         self._request = list(requests)
-        self._destination = destination
+        self._destination = guid
+        self._destination_address = addr
         self._mapping = mapping
         self.state = self._states.pop(0) if self._states else self.State.done
         self._offset = 0
         self._outgoing_buffer = [self._construct_message()]
         self._incoming_messages = []
         self._last_contact = (
-            mapping.announcements[destination].arrived
-            if destination in mapping.announcements else
+            mapping.announcements[guid].arrived
+            if guid in mapping.announcements else
             None
         )
 
@@ -98,7 +110,7 @@ class Query(object):
 
     @property
     def destination_address(self):
-        return self._mapping[self._destination]
+        return self._destination_address
 
     @property
     def last_contact(self):
@@ -130,19 +142,22 @@ class Query(object):
 
         :return:
         """
-        if self.state == self.State.query:
-            d = DeviceRequestPacket()
-        elif self.state == self.State.describe:
-            d = DeviceRequestPacket(DeviceRequestPacket.DEVA_DESCRIBE)
-        elif self.state == self.State.list_features:
-            d = DeviceFeatureRequestPacket(self._offset)
-        else:
-            d = None
-        if d is not None:
-            return {
-                "message": Message(0xDA, self.destination_address, d.serialize()),
-                "taken_at": 0
-            }
+        if self._destination_address is not None:
+            if self.state == self.State.query:
+                d = DeviceRequestPacket()
+            elif self.state == self.State.describe:
+                d = DeviceRequestPacket(DeviceRequestPacket.DEVA_DESCRIBE)
+            elif self.state == self.State.list_features:
+                d = DeviceFeatureRequestPacket(self._offset)
+            else:
+                d = None
+            if d is not None:
+                return {
+                    "message": Message(0xDA, self.destination_address, d.serialize()),
+                    "taken_at": 0
+                }
+
+        return None
 
     def receive_packet(self, packet):
         """
@@ -292,20 +307,26 @@ class DAReceiver(object):
                 if isinstance(packet, DeviceAnnouncementPacket):
                     self._network_address_mapping.add_info(incoming_message.source, packet)
 
+                return_value = None
                 # if this packet belongs to a pending query, let it decide
                 if incoming_message.source in self._pending_queries:
                     return_value = self._pending_queries[incoming_message.source].receive_packet(packet)
+                guid = six.binary_type(packet.guid.serialize()).encode("hex").upper()
+                if guid in self._pending_queries:
+                    return_value = self._pending_queries[guid].receive_packet(packet)
                 # otherwise emit it
-                else:
-                    #  Should be a DeviceAnnouncementPacket, but other agents may also be requesting data
+                if return_value is None:
+                    # Should be a DeviceAnnouncementPacket, but other agents may also be requesting data
                     if isinstance(packet, DeviceAnnouncementPacket):
                         return_value = [packet]
-                    else:
-                        return_value = None
 
                 return return_value
 
-    def query(self, destination, info=False, description=False, features=False):
+    def query(self, guid=None, addr=None, info=False, description=False, features=False):
+        if guid is None and addr is None or guid is not None and addr is not None:
+            raise ValueError("Provide either guid or address.")
+
+        destination = guid if guid is not None else addr
         if (
                 destination not in self._pending_queries or
                 self._pending_queries[destination].state is not Query.State.done
@@ -318,8 +339,8 @@ class DAReceiver(object):
             if features:
                 requests.append(Query.State.list_features)
 
-            query = Query(destination, requests, self._network_address_mapping, self.period)
-            self._pending_queries[query.destination_address] = query
+            query = Query(guid, addr, requests, self._network_address_mapping, self.period)
+            self._pending_queries[destination] = query
         else:
             log.warning("Active query already exists for %s", destination)
 

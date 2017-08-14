@@ -10,6 +10,9 @@ from simpledaemonlog.logsetup import setup_console, setup_file
 from .deva_receiver import DAReceiver
 from .utils import strtime
 
+import logging
+log = logging.getLogger(__name__)
+
 
 def print_red(s):
     print("\033[91m{}\033[0m".format(s))
@@ -48,7 +51,7 @@ def main():
 
         if args.destination is not None:
             dar.query(
-                "70B3D5589001{:04X}".format(args.destination),
+                addr=args.destination,
                 info=False, description=False, features=True
             )
 
@@ -58,7 +61,8 @@ def main():
             if packets is not None:
                 for packet in packets:
                     print_green("{}| {}| {}".format(strtime(time.time()), packet.__class__.__name__, packet))
-                    print_green(dar.announcements)
+                    for announcement in dar.announcements:
+                        log.debug(announcement)
 
 
 if __name__ == "__main__":
