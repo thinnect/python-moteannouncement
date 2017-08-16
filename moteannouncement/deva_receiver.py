@@ -86,7 +86,7 @@ class Query(object):
         self._retry = retry
         # TODO: seems like a hack that obfuscates what's going on
         # if we have no device information from said node, we should request it first
-        if guid not in mapping:
+        if guid is None or guid not in mapping:
             if Query.State.query not in requests:
                 requests = [Query.State.query] + requests
         self._states = requests
@@ -287,7 +287,7 @@ class DAReceiver(object):
                         break
 
                 if out_message is not None:
-                    log.debug(out_message)
+                    log.debug(str(out_message))
                     self.connection.send(out_message)
 
                 self._timestamp = time.time()
