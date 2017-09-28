@@ -3,6 +3,7 @@ from __future__ import print_function, unicode_literals
 
 import time
 from itertools import chain
+from collections import OrderedDict
 
 from enum import Enum
 from six.moves import queue as Queue
@@ -225,8 +226,9 @@ class DAReceiver(object):
         self._timestamp = time.time()
 
         self.period = period
+        self._last_pass_received = False
 
-        self._pending_queries = {}
+        self._pending_queries = OrderedDict()
         self._network_address_mapping = mapping
 
     @property
@@ -264,9 +266,14 @@ class DAReceiver(object):
 
         # Select a semi-random query to
         if self._pending_queries:
-            if time.time() - self._timestamp > self.period:
+            if time.time() - self._timestamp > self.period or self._last_pass_received:
                 out_message = None
-                for query in self._pending_queries.values():
+                for destination_address, query in self._pending_queries.items():
+                    # rotate the queries
+                    del self._pending_queries[destination_address]
+                    self._pending_queries[destination_address] = query
+
+                    # check if the query has an outgoing message ready
                     out_message = query.get_message()
                     if out_message is not None:
                         break
@@ -276,6 +283,7 @@ class DAReceiver(object):
                     self.connection.send(out_message)
 
                 self._timestamp = time.time()
+            self._last_pass_received = False
 
         try:
             incoming_message = self._incoming.get(timeout=0.1)
@@ -295,6 +303,9 @@ class DAReceiver(object):
                 # if this packet belongs to a pending query, let it decide
                 if incoming_message.source in self._pending_queries:
                     return_value = self._pending_queries[incoming_message.source].receive_packet(packet)
+                    self._last_pass_received = True
+                    if return_value is not None:
+                        del self._pending_queries[incoming_message.source]
                 # otherwise emit it
                 else:
                     #  Should be a DeviceAnnouncementPacket, but other agents may also be requesting data
@@ -325,11 +336,11 @@ class DAReceiver(object):
 
     @property
     def active_queries(self):
-        return {
-            query.destination: query
+        return OrderedDict([
+            (query.destination, query)
             for query in self._pending_queries.values()
             if query.state is not Query.State.done
-        }
+        ])
 
     @property
     def announcements(self):
