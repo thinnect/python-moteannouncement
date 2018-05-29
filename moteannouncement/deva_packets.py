@@ -179,7 +179,7 @@ class DeviceDescriptionPacket(TimestampMixin, SerdepaPacket):
     def __init__(self, **kwargs):
         super(DeviceDescriptionPacket, self).__init__(**kwargs)
         self.header = self.DEVA_DESCRIPTION
-        self.version = 0x01
+        self.version = 0x02
 
     def __str__(self):
         return "{:02X}:{:02X} {} b:{} p:{} m:{} @{} {}.{}.{} {}({:x})".format(
@@ -212,7 +212,7 @@ class DeviceFeaturesPacket(TimestampMixin, SerdepaPacket):
     def __init__(self, **kwargs):
         super(DeviceFeaturesPacket, self).__init__(**kwargs)
         self.header = self.DEVA_FEATURES
-        self.version = 0x01
+        self.version = 0x02
 
     def __str__(self):
         s = "{:02X}:{:02X} {} b:{} features {}/{}".format(
@@ -240,7 +240,7 @@ class DeviceRequestPacket(SerdepaPacket):
     def __init__(self, request=DEVA_QUERY, **kwargs):
         super(DeviceRequestPacket, self).__init__(**kwargs)
         self.header = request
-        self.version = 0x01
+        self.version = 0x02
 
 
 class DeviceFeatureRequestPacket(SerdepaPacket):
@@ -254,7 +254,7 @@ class DeviceFeatureRequestPacket(SerdepaPacket):
     def __init__(self, offset=0, **kwargs):
         super(DeviceFeatureRequestPacket, self).__init__(**kwargs)
         self.header = self.DEVA_LIST_FEATURES
-        self.version = 0x01
+        self.version = 0x02
         self.offset = offset
 
 

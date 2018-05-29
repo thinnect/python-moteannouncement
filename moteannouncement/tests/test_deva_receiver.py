@@ -23,8 +23,7 @@ class NetworkAddressTranslatorTester(TestCase):
         del self.network_address_translator
 
     def test_invalid_getitem(self):
-        self.assertRaises(AssertionError, lambda x, y: x[y], self.network_address_translator, '0123456789ABCDEF9')
-        self.assertRaises(AssertionError, lambda x, y: x[y], self.network_address_translator, 0x2002)
+        self.assertRaises(TypeError, self.network_address_translator.__getitem__, '0123456789ABCDEF9')
 
     @patch('moteannouncement.deva_receiver.log')
     def test_default_mapping(self, logger):
@@ -54,14 +53,14 @@ class QueryTester(TestCase):
     def test_info_query(self, time_mock):
         time_mock.time.side_effect = [1, 1, 2, 10]
         requests = [Query.State.query]
-        query = Query('000000000000AAFF', requests, self.mapping, retry=1)
+        query = Query('000000000000AAFF', None, requests, self.mapping, retry=1)
 
         self.assertIs(query.state, Query.State.query)
 
         # time.time() is called for the first time - result = 1
         message = query.get_message()
         self.assertEqual(message.destination, 0x0101)
-        self.assertEqual(message.payload, b'\x10\x01')
+        self.assertEqual(message.payload, b'\x10\x02')
 
         # time.time() is called for the second time - result = 1
         self.assertIs(query.get_message(), None)
@@ -69,7 +68,7 @@ class QueryTester(TestCase):
         # time.time() is called for the third time - result = 2
         message = query.get_message()
         self.assertEqual(message.destination, 0x0101)
-        self.assertEqual(message.payload, b'\x10\x01')
+        self.assertEqual(message.payload, b'\x10\x02')
 
         packet = MagicMock(
             spec=DeviceAnnouncementPacket,
@@ -86,14 +85,14 @@ class QueryTester(TestCase):
     def test_description_query(self, time_mock):
         time_mock.time.side_effect = [1]
         requests = [Query.State.describe]
-        query = Query('000000000000AAFF', requests, self.mapping, retry=1)
+        query = Query('000000000000AAFF', None, requests, self.mapping, retry=1)
 
         self.assertIs(query.state, Query.State.describe)
 
         # time.time() is called for the first time - result = 1
         message = query.get_message()
         self.assertEqual(message.destination, 0x0101)
-        self.assertEqual(message.payload, b'\x11\x01')
+        self.assertEqual(message.payload, b'\x11\x02')
 
         packet = MagicMock(
             spec=DeviceDescriptionPacket,
@@ -110,14 +109,14 @@ class QueryTester(TestCase):
     def test_features_query_single(self, time_mock):
         time_mock.time.side_effect = [1, 2, 3]
         requests = [Query.State.list_features]
-        query = Query('000000000000AAFF', requests, self.mapping, retry=1)
+        query = Query('000000000000AAFF', None, requests, self.mapping, retry=1)
 
         self.assertIs(query.state, Query.State.list_features)
 
         # time.time() is called for the first time - result = 1
         message = query.get_message()
         self.assertEqual(message.destination, 0x0101)
-        self.assertEqual(message.payload, b'\x12\x01\x00')
+        self.assertEqual(message.payload, b'\x12\x02\x00')
 
         packet = MagicMock(
             spec=DeviceFeaturesPacket,
@@ -133,7 +132,7 @@ class QueryTester(TestCase):
         # time.time() is called for the second time - result = 2
         message = query.get_message()
         self.assertEqual(message.destination, 0x0101)
-        self.assertEqual(message.payload, b'\x12\x01\x01')
+        self.assertEqual(message.payload, b'\x12\x02\x01')
 
         packet = MagicMock(
             spec=DeviceFeaturesPacket,
@@ -149,7 +148,7 @@ class QueryTester(TestCase):
         # time.time() is called for the third time - result = 3
         message = query.get_message()
         self.assertEqual(message.destination, 0x0101)
-        self.assertEqual(message.payload, b'\x12\x01\x02')
+        self.assertEqual(message.payload, b'\x12\x02\x02')
 
         packet = MagicMock(
             spec=DeviceFeaturesPacket,
@@ -168,14 +167,14 @@ class QueryTester(TestCase):
     def test_features_query_multiple(self, time_mock):
         time_mock.time.side_effect = [1, 2]
         requests = [Query.State.list_features]
-        query = Query('000000000000AAFF', requests, self.mapping, retry=1)
+        query = Query('000000000000AAFF', None, requests, self.mapping, retry=1)
 
         self.assertIs(query.state, Query.State.list_features)
 
         # time.time() is called for the first time - result = 1
         message = query.get_message()
         self.assertEqual(message.destination, 0x0101)
-        self.assertEqual(message.payload, b'\x12\x01\x00')
+        self.assertEqual(message.payload, b'\x12\x02\x00')
 
         packet = MagicMock(
             spec=DeviceFeaturesPacket,
@@ -194,7 +193,7 @@ class QueryTester(TestCase):
         # time.time() is called for the second time - result = 2
         message = query.get_message()
         self.assertEqual(message.destination, 0x0101)
-        self.assertEqual(message.payload, b'\x12\x01\x02')
+        self.assertEqual(message.payload, b'\x12\x02\x02')
 
         packet = MagicMock(
             spec=DeviceFeaturesPacket,
@@ -213,14 +212,14 @@ class QueryTester(TestCase):
     def test_all_query(self, time_mock):
         time_mock.time.side_effect = [1, 2, 3, 4]
         requests = [Query.State.query, Query.State.describe, Query.State.list_features]
-        query = Query('000000000000AAFF', requests, self.mapping, retry=1)
+        query = Query('000000000000AAFF', None, requests, self.mapping, retry=1)
 
         self.assertIs(query.state, Query.State.query)
 
         # time.time() is called for the first time - result = 1
         message = query.get_message()
         self.assertEqual(message.destination, 0x0101)
-        self.assertEqual(message.payload, b'\x10\x01')
+        self.assertEqual(message.payload, b'\x10\x02')
 
         packet = MagicMock(
             spec=DeviceAnnouncementPacket,
@@ -234,7 +233,7 @@ class QueryTester(TestCase):
         # time.time() is called for the second time - result = 2
         message = query.get_message()
         self.assertEqual(message.destination, 0x0101)
-        self.assertEqual(message.payload, b'\x11\x01')
+        self.assertEqual(message.payload, b'\x11\x02')
 
         packet = MagicMock(
             spec=DeviceDescriptionPacket,
@@ -248,7 +247,7 @@ class QueryTester(TestCase):
         # time.time() is called for the first time - result = 1
         message = query.get_message()
         self.assertEqual(message.destination, 0x0101)
-        self.assertEqual(message.payload, b'\x12\x01\x00')
+        self.assertEqual(message.payload, b'\x12\x02\x00')
 
         packet = MagicMock(
             spec=DeviceFeaturesPacket,
@@ -267,7 +266,7 @@ class QueryTester(TestCase):
         # time.time() is called for the second time - result = 2
         message = query.get_message()
         self.assertEqual(message.destination, 0x0101)
-        self.assertEqual(message.payload, b'\x12\x01\x02')
+        self.assertEqual(message.payload, b'\x12\x02\x02')
 
         packet = MagicMock(
             spec=DeviceFeaturesPacket,
@@ -288,7 +287,7 @@ class QueryTester(TestCase):
         requests = [Query.State.describe, Query.State.list_features]
         self.mapping.__contains__.return_value = False
 
-        query = Query('000000000000AAFF', list(requests), self.mapping, retry=1)
+        query = Query('000000000000AAFF', None, list(requests), self.mapping, retry=1)
 
         self.assertEqual(query._request, [Query.State.query]+requests)
 
@@ -297,7 +296,7 @@ class QueryTester(TestCase):
         # time.time() is called for the first time - result = 1
         message = query.get_message()
         self.assertEqual(message.destination, 0x0101)
-        self.assertEqual(message.payload, b'\x10\x01')
+        self.assertEqual(message.payload, b'\x10\x02')
 
         packet = MagicMock(
             spec=DeviceAnnouncementPacket,
@@ -311,7 +310,7 @@ class QueryTester(TestCase):
         # time.time() is called for the second time - result = 2
         message = query.get_message()
         self.assertEqual(message.destination, 0x0101)
-        self.assertEqual(message.payload, b'\x11\x01')
+        self.assertEqual(message.payload, b'\x11\x02')
 
         packet = MagicMock(
             spec=DeviceDescriptionPacket,
@@ -325,7 +324,7 @@ class QueryTester(TestCase):
         # time.time() is called for the first time - result = 1
         message = query.get_message()
         self.assertEqual(message.destination, 0x0101)
-        self.assertEqual(message.payload, b'\x12\x01\x00')
+        self.assertEqual(message.payload, b'\x12\x02\x00')
 
         packet = MagicMock(
             spec=DeviceFeaturesPacket,
@@ -344,7 +343,7 @@ class QueryTester(TestCase):
         # time.time() is called for the second time - result = 2
         message = query.get_message()
         self.assertEqual(message.destination, 0x0101)
-        self.assertEqual(message.payload, b'\x12\x01\x02')
+        self.assertEqual(message.payload, b'\x12\x02\x02')
 
         packet = MagicMock(
             spec=DeviceFeaturesPacket,
@@ -446,7 +445,7 @@ class DeviceAnnouncementReceiverTester(TestCase):
         receiver.query('0000000000000101', info=True, features=True)
 
         query_mock.assert_called_with(
-            '0000000000000101',
+            '0000000000000101', None,
             [query_mock.State.query, query_mock.State.list_features],
             receiver._network_address_mapping, 1
         )

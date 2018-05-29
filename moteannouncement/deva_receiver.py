@@ -40,21 +40,13 @@ class NetworkAddressTranslator(dict):
             try:
                 return super(NetworkAddressTranslator, self).__getitem__(key)
             except KeyError:
-                log.warning(
-                    "Unknown GUID {}. Using default mapping of last four digits: {}".format(
-                        key, key[-4:]
-                    )
-                )
+                log.warning("Unknown GUID %s. Using default mapping of last four digits: %s", key, key[-4:])
                 return int(key[-4:], 16)
-        if isinstance(key, int):
+        elif isinstance(key, int):
             try:
                 return super(NetworkAddressTranslator, self).__getitem__(key)
             except KeyError:
-                log.warning(
-                    "Unknown address {}. Returning None".format(
-                        key
-                    )
-                )
+                log.warning("Unknown address %s. Returning None", key)
                 return None
         raise TypeError("Address translator requires GUID or integer address!")
 
@@ -112,7 +104,10 @@ class Query(object):
 
     @property
     def destination_address(self):
-        return self._destination_address
+        if self._destination_address is None:
+            return self._mapping[self._destination]
+        else:
+            return self._destination_address
 
     @property
     def last_contact(self):
@@ -144,7 +139,7 @@ class Query(object):
 
         :return:
         """
-        if self._destination_address is not None:
+        if self.destination_address is not None:
             if self.state == self.State.query:
                 d = DeviceRequestPacket()
             elif self.state == self.State.describe:
