@@ -22,8 +22,7 @@ setup(name="moteannouncement",
       platforms=["any"],
       packages=find_packages(),
       install_requires=[
-          "moteconnection", "simpledaemonlog", "serdepa", "pytz", "argconfparse", "six",
-          "enum34"
+          "moteconnection", "serdepa", "pytz", "six", "enum34"
       ],
       tests_require=["nose", "mock"],
       scripts=[pjoin("bin", "moteannouncements")],

@@ -1,18 +1,20 @@
 # python-moteannouncement
-Python library for  moteannouncement protocol.
+Python library for device announcement protocol.
 
-## Usage examples
+Includes a basic test application for querying devices directly.
+
+## Library usage examples
 
 ```
 from moteannouncement import DAReceiver
 import time
 
-address = 'sf@localhost:9002'
-source = 0x0315     # address of the MURP on the gateway
+conn = 'sf@localhost:9002'
+addr = 0x0315 # address of the device running this application
 receiver = DAReceiver(
-    address=address,
-    source=source,
-    request_period=10
+    connection_string=conn,
+    address=addr,
+    period=10
 )
 
 with receiver:
@@ -30,3 +32,13 @@ with receiver:
                 print(packet)
         time.sleep(0.01)
 ```
+
+# Example application usage
+...
+
+## Installation
+Install the following dependencies:
+https://github.com/proactivity-lab/python-moteconnection/releases
+https://github.com/thinnect/serdepa/releases
+
+Then install moteannaouncement.

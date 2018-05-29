@@ -10,7 +10,7 @@ import six
 
 from .utils import strtime, chunk
 
-__author__ = "Raido Pahtma"
+__author__ = "Raido Pahtma, Kaarel Ratas"
 __license__ = "MIT"
 
 
