@@ -9,7 +9,10 @@ from six.moves import queue
 from moteconnection.message import Message
 
 from ..deva_receiver import NetworkAddressTranslator, Query, DAReceiver
-from ..deva_packets import DeviceAnnouncementPacket, DeviceDescriptionPacket, DeviceFeaturesPacket
+from ..deva_packets import (
+    DeviceAnnouncementPacket, DeviceAnnouncementPacketV2,
+    DeviceDescriptionPacket, DeviceFeaturesPacket
+)
 
 
 class NetworkAddressTranslatorTester(TestCase):
@@ -390,6 +393,36 @@ class DeviceAnnouncementReceiverTester(TestCase):
         message = receiver.poll()
         self.assertTrue(len(message) == 1)
         self.assertIsInstance(message[0], DeviceAnnouncementPacket)
+        message = receiver.poll()
+        self.assertIs(message, None)
+
+    def test_receive_v2(self, queue_mock, connection_mock, message_dispatcher_mock, query_mock):
+        message_mock = MagicMock(
+            spec=Message,
+            payload=(
+                b'\x00'                                                                 # header
+                b'\x02'                                                                 # version
+                b'\x70\xB3\xD5\x58\x90\x01\x06\x23'                                     # guid
+                b'\x00\x00\x00\x04'                                                     # boot_number
+                b'\x00\x00\x00\x00\x59\x43\xF1\xB8'                                     # boot_time
+                b'\x00\x17\x93\x58'                                                     # uptime
+                b'\x00\x3F\xB2\x5B'                                                     # lifetime
+                b'\x00\x00\x03\x9B'                                                     # announcement
+                b'\x5B\x86\x5C\x5B\x7E\xD0\x47\xC0\x97\x57\x52\x60\x5F\x89\xC0\x95'     # uuid
+                b'\x85'                                                                 # position_type
+                b'\x00\x00\x00\x00'                                                     # latitude
+                b'\x00\x00\x00\x00'                                                     # longitude
+                b'\x00\x00\x00\x00'                                                     # elevation
+                b'\x00\x00\x00\x00\x59\x43\xEC\x33'                                     # ident_timestamp
+                b'\xAF\x90\xAF\x90'                                                     # feature_list_hash
+            )
+        )
+        queue_mock.Queue.return_value.get.side_effect = [message_mock, queue.Empty()]
+        queue_mock.Empty = queue.Empty
+        receiver = DAReceiver('', 0x0001, 1)
+        message = receiver.poll()
+        self.assertTrue(len(message) == 1)
+        self.assertIsInstance(message[0], DeviceAnnouncementPacketV2)
         message = receiver.poll()
         self.assertIs(message, None)
 

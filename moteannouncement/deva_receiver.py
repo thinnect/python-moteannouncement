@@ -14,7 +14,8 @@ from moteconnection.connection import Connection
 
 from .deva_packets import (
     DeviceAnnouncementPacket, DeviceFeaturesPacket, DeviceDescriptionPacket,
-    DeviceRequestPacket, DeviceFeatureRequestPacket
+    DeviceRequestPacket, DeviceFeatureRequestPacket, DeviceAnnouncementPacketV2,
+    ANNOUNCEMENT_PACKETS
 )
 
 import logging
@@ -48,7 +49,7 @@ class NetworkAddressTranslator(dict):
             return int(key[-4:], 16)
 
     def add_info(self, source, packet):
-        assert isinstance(packet, DeviceAnnouncementPacket)
+        assert isinstance(packet, ANNOUNCEMENT_PACKETS)
         guid = six.binary_type(packet.guid.serialize()).encode("hex").upper()
         if guid not in self or self[guid] != source:
             self[guid] = source
@@ -148,13 +149,14 @@ class Query(object):
     def receive_packet(self, packet):
         """
 
-        :param DeviceAnnouncementPacket | DeviceDescriptionPacket | DeviceFeaturesPacket packet:
+        :param packet:
+        :type packet: DeviceAnnouncementPacket | DeviceAnnouncementPacketV2 | DeviceDescriptionPacket | DeviceFeaturesPacket
         :return: List of packets to emit
-        :rtype: None | list[DeviceAnnouncementPacket | DeviceDescriptionPacket | DeviceFeaturesPacket]
+        :rtype: None | list[DeviceAnnouncementPacket | DeviceAnnouncementPacketV2 | DeviceDescriptionPacket | DeviceFeaturesPacket]
         """
 
         if (
-                isinstance(packet, DeviceAnnouncementPacket) and
+                isinstance(packet, ANNOUNCEMENT_PACKETS) and
                 packet.header == DeviceAnnouncementPacket.DEVA_ANNOUNCEMENT
         ):
             if self.state is self.State.query:
@@ -179,7 +181,7 @@ class Query(object):
         else:
             raise ValueError("Unknown packet {}".format(packet.__class__.__name__))
 
-        if not isinstance(packet, DeviceAnnouncementPacket):
+        if not isinstance(packet, ANNOUNCEMENT_PACKETS):
             if not self._incoming_messages:
                 self._incoming_messages = [self._mapping.announcements[self._destination]]
         self._incoming_messages.append(packet)
@@ -297,7 +299,7 @@ class DAReceiver(object):
                 log.exception("Error deserializing incoming packet: %s", incoming_message)
             else:
 
-                if isinstance(packet, DeviceAnnouncementPacket):
+                if isinstance(packet, ANNOUNCEMENT_PACKETS):
                     self._network_address_mapping.add_info(incoming_message.source, packet)
 
                 # if this packet belongs to a pending query, let it decide
@@ -309,7 +311,7 @@ class DAReceiver(object):
                 # otherwise emit it
                 else:
                     #  Should be a DeviceAnnouncementPacket, but other agents may also be requesting data
-                    if isinstance(packet, DeviceAnnouncementPacket):
+                    if isinstance(packet, ANNOUNCEMENT_PACKETS):
                         return_value = [packet]
                     else:
                         return_value = None
@@ -352,20 +354,26 @@ class DAReceiver(object):
 
         :param moteconnection.message.Message message: incoming message
         :raises ValueError: When unable to deserialize
-        :rtype: DeviceAnnouncementPacket | DeviceDescriptionPacket | DeviceFeaturesPacket
+        :rtype: DeviceAnnouncementPacket | DeviceAnnouncementPacketV2 | DeviceDescriptionPacket | DeviceFeaturesPacket
         :returns: Deserialized packet
         """
         if len(message.payload) > 0:
             ptp = ord(message.payload[0])
             if ptp == DeviceAnnouncementPacket.DEVA_ANNOUNCEMENT:
-                packet = DeviceAnnouncementPacket()
+                version = ord(message.payload[1])
+                if version == 1:
+                    packet = DeviceAnnouncementPacket()
+                elif version == 2:
+                    packet = DeviceAnnouncementPacketV2()
+                else:
+                    raise ValueError('Unknown packet %s', message)
             elif ptp == DeviceDescriptionPacket.DEVA_DESCRIPTION:
                 packet = DeviceDescriptionPacket()
             elif ptp == DeviceFeaturesPacket.DEVA_FEATURES:
                 packet = DeviceFeaturesPacket()
 
             else:
-                log.warning("header {}".format(ptp))
+                log.warning("header %s", ptp)
                 raise ValueError("header {}".format(ptp))
 
             try:
