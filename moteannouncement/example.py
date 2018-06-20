@@ -100,8 +100,6 @@ def main():
             response = dar.poll()
             if response is not None:
                 print_green("{}| {}".format(strtime(time.time()), response))
-                # for announcement, packet in dar.announcements.items():
-                #     log.debug("%s: %s", announcement, packet)
 
 
 if __name__ == "__main__":
