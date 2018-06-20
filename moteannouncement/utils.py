@@ -5,6 +5,7 @@ Utilities used in the moteannouncement package.
 import datetime
 import pytz
 import time
+from warnings import warn
 
 
 def strtime(utc_timestamp):
@@ -30,3 +31,10 @@ def chunk(sequence, length, truncate=False):
         for i in range(0, len(sequence), length)
         if not truncate or len(sequence[i:i+length]) == length
     )
+
+
+class FeatureMap(dict):
+    def __setitem__(self, key, value):
+        if key in self and self[key] != value:
+            warn("Overwriting existing feature_list_hash", RuntimeWarning)
+        return super(FeatureMap, self).__setitem__(key, value)

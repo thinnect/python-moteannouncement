@@ -2,21 +2,21 @@
 from __future__ import print_function, unicode_literals
 
 import time
-from itertools import chain
 from collections import OrderedDict
 
-from enum import Enum
 from six.moves import queue as Queue
 import six
 
-from moteconnection.message import MessageDispatcher, Message
+from moteconnection.message import MessageDispatcher
 from moteconnection.connection import Connection
 
 from .deva_packets import (
-    DeviceAnnouncementPacket, DeviceFeaturesPacket, DeviceDescriptionPacket,
-    DeviceRequestPacket, DeviceFeatureRequestPacket, DeviceAnnouncementPacketV2,
+    DeviceAnnouncementPacket, DeviceFeaturesPacket, DeviceDescriptionPacket, DeviceAnnouncementPacketV2,
     ANNOUNCEMENT_PACKETS
 )
+from .utils import FeatureMap
+from .query import Query
+from .response import Response
 
 import logging
 log = logging.getLogger(__name__)
@@ -66,152 +66,6 @@ class NetworkAddressTranslator(dict):
         return dict(self._original_data)
 
 
-@six.python_2_unicode_compatible
-class Query(object):
-
-    class State(Enum):
-        __order__ = 'query describe list_features done'     # only needed in 2.x
-        query = "query"
-        describe = "describe"
-        list_features = "list_features"
-        done = "done"
-
-    def __init__(self, guid, addr, requests, mapping, retry=10):
-        self._retry = retry
-        # TODO: seems like a hack that obfuscates what's going on
-        # if we have no device information from said node, we should request it first
-        if guid is None or guid not in mapping:
-            if Query.State.query not in requests:
-                requests = [Query.State.query] + requests
-        self._states = requests
-        self._request = list(requests)
-        self._destination = guid
-        self._destination_address = addr
-        self._mapping = mapping
-        self.state = self._states.pop(0) if self._states else self.State.done
-        self._offset = 0
-        self._outgoing_buffer = [self._construct_message()]
-        self._incoming_messages = []
-        self._last_contact = (
-            mapping.announcements[guid].arrived
-            if guid in mapping.announcements else
-            None
-        )
-
-    @property
-    def destination(self):
-        return self._destination
-
-    @property
-    def destination_address(self):
-        if self._destination_address is None:
-            return self._mapping[self._destination]
-        else:
-            return self._destination_address
-
-    @property
-    def last_contact(self):
-        return self._last_contact.isoformat() if self._last_contact is not None else None
-
-    def get_message(self):
-        """
-        Returns an outgoing message
-
-        :return: Message to be sent
-        :rtype: moteconnection.message.Message | None
-        """
-        if self.state is not Query.State.done:
-            now = time.time()
-            try:
-                outgoing = self._outgoing_buffer[0]
-            except IndexError:
-                return None
-
-            if outgoing["taken_at"] <= now - self._retry:
-                outgoing["taken_at"] = now
-                return outgoing["message"]
-
-        return None
-
-    def _construct_message(self):
-        """
-        Returns the correct outgoing message or None
-
-        :return:
-        """
-        if self.destination_address is not None:
-            if self.state == self.State.query:
-                d = DeviceRequestPacket()
-            elif self.state == self.State.describe:
-                d = DeviceRequestPacket(DeviceRequestPacket.DEVA_DESCRIBE)
-            elif self.state == self.State.list_features:
-                d = DeviceFeatureRequestPacket(self._offset)
-            else:
-                d = None
-            if d is not None:
-                return {
-                    "message": Message(0xDA, self.destination_address, d.serialize()),
-                    "taken_at": 0
-                }
-
-        return None
-
-    def receive_packet(self, packet):
-        """
-
-        :param packet:
-        :type packet: DeviceAnnouncementPacket | DeviceAnnouncementPacketV2 | DeviceDescriptionPacket | DeviceFeaturesPacket
-        :return: List of packets to emit
-        :rtype: None | list[DeviceAnnouncementPacket | DeviceAnnouncementPacketV2 | DeviceDescriptionPacket | DeviceFeaturesPacket]
-        """
-
-        if (
-                isinstance(packet, ANNOUNCEMENT_PACKETS) and
-                packet.header == DeviceAnnouncementPacket.DEVA_ANNOUNCEMENT
-        ):
-            if self.state is self.State.query:
-                self.state = self._states.pop(0) if self._states else self.State.done
-        elif (
-                isinstance(packet, DeviceDescriptionPacket) and
-                packet.header == DeviceDescriptionPacket.DEVA_DESCRIPTION
-        ):
-            if self.state is self.State.describe:
-                self.state = self._states.pop(0) if self._states else self.State.done
-        elif (
-                isinstance(packet, DeviceFeaturesPacket) and
-                packet.header == DeviceFeaturesPacket.DEVA_FEATURES
-        ):
-
-            if self.state is self.State.list_features:
-                self._offset = packet.offset + len(packet.features) / 16  # TODO remove 16 when no longer arr
-
-                # if self.offset >= m.total:
-                if len(packet.features) == 0:
-                    self.state = self._states.pop(0) if self._states else self.State.done
-        else:
-            raise ValueError("Unknown packet {}".format(packet.__class__.__name__))
-
-        if not isinstance(packet, ANNOUNCEMENT_PACKETS):
-            if not self._incoming_messages:
-                self._incoming_messages = [self._mapping.announcements[self._destination]]
-        self._incoming_messages.append(packet)
-        self._last_contact = packet.arrived
-
-        if self.state is not self.State.done:
-            m = self._construct_message()
-            if m is not None:
-                self._outgoing_buffer[0] = m
-        else:
-            return self._incoming_messages
-
-    def __str__(self):
-        states = " -> ".join(
-            "<{}>".format(s.name) if s == self.state else "{}".format(s.name)
-            for s in chain(self._request, [Query.State.done])
-        )
-        return 'Query(destination={}, state=[{}])'.format(self._destination, states)
-
-
 class DAReceiver(object):
     """
     :type address: six.text_type
@@ -242,6 +96,7 @@ class DAReceiver(object):
 
         self._pending_queries = OrderedDict()
         self._network_address_mapping = mapping
+        self.feature_map = FeatureMap()
 
     @property
     def connection(self):
@@ -269,7 +124,7 @@ class DAReceiver(object):
         """
 
         :return:
-        :rtype: None | list[DeviceAnnouncementPacket | DeviceAnnouncementPacketV2 | DeviceDescriptionPacket | DeviceFeaturesPacket]
+        :rtype: None | moteannouncement.response.Response
         """
         # Remove queries that are done
         for destination, query in dict(self._pending_queries).items():
@@ -312,20 +167,20 @@ class DAReceiver(object):
                 if isinstance(packet, ANNOUNCEMENT_PACKETS):
                     self._network_address_mapping.add_info(incoming_message.source, packet)
 
-                return_value = None
+                response = None
                 # if this packet belongs to a pending query, let it decide
                 if incoming_message.source in self._pending_queries:
-                    return_value = self._pending_queries[incoming_message.source].receive_packet(packet)
+                    response = self._pending_queries[incoming_message.source].receive_packet(packet)
                 guid = six.binary_type(packet.guid.serialize()).encode("hex").upper()
                 if guid in self._pending_queries:
-                    return_value = self._pending_queries[guid].receive_packet(packet)
+                    response = self._pending_queries[guid].receive_packet(packet)
                 # otherwise emit it
-                if return_value is None:
+                if response is None:
                     # Should be a DeviceAnnouncementPacket, but other agents may also be requesting data
                     if isinstance(packet, ANNOUNCEMENT_PACKETS):
-                        return_value = [packet]
+                        response = Response([packet])
 
-                return return_value
+                return response
 
     def query(self, guid=None, addr=None, info=False, description=False, features=False):
         if guid is None and addr is None or guid is not None and addr is not None:
@@ -344,7 +199,7 @@ class DAReceiver(object):
             if features:
                 requests.append(Query.State.list_features)
 
-            query = Query(guid, addr, requests, self._network_address_mapping, self.period)
+            query = Query(guid, addr, requests, self._network_address_mapping, self.feature_map, self.period)
             self._pending_queries[destination] = query
         else:
             log.warning("Active query already exists for %s", destination)

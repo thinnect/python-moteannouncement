@@ -97,12 +97,11 @@ def main():
 
         while not interrupted.is_set():
             time.sleep(0.01)
-            packets = dar.poll()
-            if packets is not None:
-                for packet in packets:
-                    print_green("{}| {}| {}".format(strtime(time.time()), packet.__class__.__name__, packet))
-                    for announcement in dar.announcements:
-                        log.debug(announcement)
+            response = dar.poll()
+            if response is not None:
+                print_green("{}| {}".format(strtime(time.time()), response))
+                # for announcement, packet in dar.announcements.items():
+                #     log.debug("%s: %s", announcement, packet)
 
 
 if __name__ == "__main__":
