@@ -48,10 +48,35 @@ class QueryTester(TestCase):
         self.mapping = MagicMock(spec=NetworkAddressTranslator)
         self.mapping.__getitem__.return_value = 0x0101
         self.mapping.__contains__.return_value = True
+        self.mapping.announcements.__getitem__.return_value.feature_list_hash = 0x12341234
         self.feature_map = FeatureMap()
 
     def tearDown(self):
         del self.mapping
+
+    def test_cached_feature_query(self, time_mock, response_mock):
+        time_mock.time.side_effect = [1, 2, 3]
+        response_mock.return_value.features = None
+        features = ['ec2c01ff-22cd-4885-8473-117552229e9e']
+        requests = [Query.State.query, Query.State.list_features]
+        self.feature_map['12341234'] = features
+        query = Query('000000000000FF10', None, requests, self.mapping, self.feature_map, retry=1)
+
+        self.assertIs(query.state, Query.State.query)
+
+        message = query.get_message()
+        self.assertEqual(message.destination, 0x0101)
+        self.assertEqual(message.payload, b'\x10\x02')
+
+        packet = MagicMock(
+            spec=DeviceAnnouncementPacketV2,
+            header=DeviceAnnouncementPacketV2.DEVA_ANNOUNCEMENT,
+            arrived=None,
+            feature_list_hash=0x12341234
+        )
+        response = query.receive_packet(packet)
+        self.assertIs(query.state, Query.State.done)
+        self.assertEqual(response.features, features)
 
     def test_info_query(self, time_mock, response_mock):
         time_mock.time.side_effect = [1, 1, 2, 10]

@@ -146,7 +146,7 @@ class DAReceiver(object):
                         break
 
                 if out_message is not None:
-                    log.debug(str(out_message))
+                    log.debug("Outgoing message: %s", out_message)
                     self.connection.send(out_message)
 
                 self._timestamp = time.time()
@@ -157,28 +157,33 @@ class DAReceiver(object):
         except Queue.Empty:
             pass
         else:
-            log.debug(incoming_message)
+            log.debug("Incoming message: %s", incoming_message)
             try:
                 packet = self._deserialize(incoming_message)
             except ValueError:
                 log.exception("Error deserializing incoming packet: %s", incoming_message)
             else:
 
+                log.debug("Incoming packet: (%s) %s", packet.__class__.__name__, packet)
                 if isinstance(packet, ANNOUNCEMENT_PACKETS):
                     self._network_address_mapping.add_info(incoming_message.source, packet)
 
                 response = None
-                # if this packet belongs to a pending query, let it decide
-                if incoming_message.source in self._pending_queries:
-                    response = self._pending_queries[incoming_message.source].receive_packet(packet)
                 guid = six.binary_type(packet.guid.serialize()).encode("hex").upper()
+                # if this packet belongs to a pending query, let it decide
                 if guid in self._pending_queries:
                     response = self._pending_queries[guid].receive_packet(packet)
+                # Fall back to the source address as key
+                elif incoming_message.source in self._pending_queries:
+                    response = self._pending_queries[incoming_message.source].receive_packet(packet)
                 # otherwise emit it
-                if response is None:
-                    # Should be a DeviceAnnouncementPacket, but other agents may also be requesting data
-                    if isinstance(packet, ANNOUNCEMENT_PACKETS):
-                        response = Response([packet])
+                # Should be a DeviceAnnouncementPacket, but other agents may also be requesting data
+                elif isinstance(packet, ANNOUNCEMENT_PACKETS):
+                    response = Response([packet])
+
+                # Make sure to remember the feature_list_hash -> features combination for future reference
+                if response is not None and response.features is not None:
+                    self.feature_map[response.feature_list_hash] = response.features
 
                 return response
 
@@ -200,7 +205,11 @@ class DAReceiver(object):
                 requests.append(Query.State.list_features)
 
             query = Query(guid, addr, requests, self._network_address_mapping, self.feature_map, self.period)
-            self._pending_queries[destination] = query
+            if destination in self._pending_queries:
+                if not self._pending_queries[destination].is_equivalent(query):
+                    self._pending_queries[destination] = query
+            else:
+                self._pending_queries[destination] = query
         else:
             log.warning("Active query already exists for %s", destination)
 

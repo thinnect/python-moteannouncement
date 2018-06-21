@@ -1,5 +1,6 @@
 from itertools import chain
 import time
+import logging
 
 import six
 from enum import Enum
@@ -12,6 +13,9 @@ from .deva_packets import (
     ANNOUNCEMENT_PACKETS
 )
 from .response import Response
+
+
+logger = logging.getLogger(__name__)
 
 
 @six.python_2_unicode_compatible
@@ -46,6 +50,15 @@ class Query(object):
             None
         )
         self._feature_map = feature_map
+        self._known_features = None
+
+    def is_equivalent(self, other):
+        """
+        Checks whether two Query objects request the same data.
+        :param Query other: The other query
+        :return: Returns whether the two queries are the same.
+        """
+        return self._request == other._request
 
     @property
     def destination(self):
@@ -105,64 +118,79 @@ class Query(object):
 
         return None
 
+    def _advance_state(self):
+        logger.debug('states: %s', self._states)
+        self.state = self._states.pop(0) if self._states else self.State.done
+
     def receive_packet(self, packet):
         """
 
         :param packet:
         :type packet: DeviceAnnouncementPacket | DeviceAnnouncementPacketV2 | DeviceDescriptionPacket | DeviceFeaturesPacket
         :return: List of packets to emit
-        :rtype: None | list[DeviceAnnouncementPacket | DeviceAnnouncementPacketV2 | DeviceDescriptionPacket | DeviceFeaturesPacket]
+        :rtype: None | Response
         """
 
-        if (
-                isinstance(packet, ANNOUNCEMENT_PACKETS) and
-                packet.header == DeviceAnnouncementPacket.DEVA_ANNOUNCEMENT
-        ):
-            if self.state is self.State.query:
-                self.state = self._states.pop(0) if self._states else self.State.done
-        elif (
-                isinstance(packet, DeviceDescriptionPacket) and
-                packet.header == DeviceDescriptionPacket.DEVA_DESCRIPTION
-        ):
-            if self.state is self.State.describe:
-                self.state = self._states.pop(0) if self._states else self.State.done
-        elif (
-                isinstance(packet, DeviceFeaturesPacket) and
-                packet.header == DeviceFeaturesPacket.DEVA_FEATURES
-        ):
-
-            if self.state is self.State.list_features:
+        known_packets = (
+            DeviceAnnouncementPacket, DeviceAnnouncementPacketV2,
+            DeviceDescriptionPacket, DeviceFeaturesPacket
+        )
+        if isinstance(packet, known_packets):
+            if (
+                    isinstance(packet, ANNOUNCEMENT_PACKETS) and
+                    packet.header == DeviceAnnouncementPacket.DEVA_ANNOUNCEMENT and
+                    self.state is self.State.query
+            ):
+                self._advance_state()
+            elif (
+                    isinstance(packet, DeviceDescriptionPacket) and
+                    packet.header == DeviceDescriptionPacket.DEVA_DESCRIPTION and
+                    self.state is self.State.describe
+            ):
+                self._advance_state()
+            elif (
+                    isinstance(packet, DeviceFeaturesPacket) and
+                    packet.header == DeviceFeaturesPacket.DEVA_FEATURES and
+                    self.state is self.State.list_features
+            ):
                 self._offset = packet.offset + len(packet.features) / 16  # TODO remove 16 when no longer arr
 
                 # if self.offset >= m.total:
+                logger.debug('len(features): %s', len(packet.features))
                 if len(packet.features) == 0:
-                    self.state = self._states.pop(0) if self._states else self.State.done
+                    self._advance_state()
+                logger.debug('self: %s', self)
         else:
             raise ValueError("Unknown packet {}".format(packet.__class__.__name__))
 
-        if not isinstance(packet, ANNOUNCEMENT_PACKETS):
-            if not self._incoming_messages:
-                self._incoming_messages = [self._mapping.announcements[self._destination]]
+        if not isinstance(packet, ANNOUNCEMENT_PACKETS) and not self._incoming_messages:
+            self._incoming_messages = [self._mapping.announcements[self._destination]]
         self._incoming_messages.append(packet)
         self._last_contact = packet.arrived
 
+        return self._construct_response()
+
+    def _construct_response(self):
         response = None
-        if self.state is self.State.list_features and isinstance(self._incoming_messages[0], ANNOUNCEMENT_PACKETS):
-            feature_list_hash = "{:x}".format(self._incoming_messages[0].feature_list_hash)
-            if feature_list_hash in self._feature_map:
-                response = Response(self._incoming_messages)
-                response.features = self._feature_map[feature_list_hash]
-                self.state = self.State.done
+        # Special case for when we already know the features of the `feature_list_hash`
+        if self.state is self.State.list_features:
+            if isinstance(self._incoming_messages[0], ANNOUNCEMENT_PACKETS):
+                announcement = self._incoming_messages[0]
             else:
-                m = self._construct_message()
-                if m is not None:
-                    self._outgoing_buffer[0] = m
-        elif self.state is not self.State.done:
+                announcement = self._mapping.announcements[self._destination]
+            feature_list_hash = "{:x}".format(announcement.feature_list_hash)
+            if feature_list_hash in self._feature_map:
+                self._known_features = self._feature_map[feature_list_hash]
+                self._advance_state()
+        # End special case
+        if self.state is not self.State.done:
             m = self._construct_message()
             if m is not None:
                 self._outgoing_buffer[0] = m
         else:
             response = Response(self._incoming_messages)
+            if self._known_features is not None and response.features is None:
+                response.features = self._known_features
         return response
 
     def __str__(self):
@@ -170,4 +198,4 @@ class Query(object):
             "<{}>".format(s.name) if s == self.state else "{}".format(s.name)
             for s in chain(self._request, [Query.State.done])
         )
-        return 'Query(destination={}, state=[{}])'.format(self._destination, states)
+        return 'Query(dst={}, state=[{}])'.format(self._destination, states)
