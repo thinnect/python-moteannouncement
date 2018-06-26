@@ -125,7 +125,7 @@ class DeviceAnnouncementPacketV2(TimestampMixin, SerdepaPacket):
 
     @classmethod
     def sample(cls):
-        dap = DeviceAnnouncementPacket()
+        dap = DeviceAnnouncementPacketV2()
         for i in range(0, 8):
             dap.guid.append(i)
             # dap.guid[i] = i
@@ -137,6 +137,7 @@ class DeviceAnnouncementPacketV2(TimestampMixin, SerdepaPacket):
         for i in range(0, 15):
             dap.uuid.append(i)
             # dap.uuid[i] = i
+        dap.position_type = 'G'
         dap.latitude = 58*1000000
         dap.longitude = -24*1000000
         dap.elevation = 1000

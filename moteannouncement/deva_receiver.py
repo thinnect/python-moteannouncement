@@ -46,7 +46,7 @@ class NetworkAddressTranslator(dict):
             try:
                 return super(NetworkAddressTranslator, self).__getitem__(key)
             except KeyError:
-                log.warning("Unknown address %s. Returning None", key)
+                log.warning("Unknown address %04X. Returning None", key)
                 return None
         raise TypeError("Address translator requires GUID or integer address!")
 
@@ -112,6 +112,10 @@ class DAReceiver(object):
             self._dispatcher = MessageDispatcher(self.address, 0xFF)
             self._dispatcher.register_receiver(0xDA, self._incoming)
         return self._dispatcher
+
+    @property
+    def mapping(self):
+        return self._network_address_mapping
 
     def __enter__(self):
         assert self.connection is not None  # creates and establishes the connection
