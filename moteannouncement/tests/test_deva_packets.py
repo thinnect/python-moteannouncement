@@ -2,10 +2,10 @@ from unittest import TestCase
 
 from mock import patch
 
-from ..deva_packets import DeviceAnnouncementPacket, DeviceFeaturesPacket, DeviceDescriptionPacket
+from ..deva_packets.v1 import DeviceAnnouncementPacket
 
 
-@patch('moteannouncement.deva_packets.datetime')
+@patch('moteannouncement.deva_packets.utils.datetime')
 class TimestampMixingTester(TestCase):
     announcement = (
         b'\x00'

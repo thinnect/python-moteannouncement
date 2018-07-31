@@ -10,10 +10,7 @@ import six
 from moteconnection.message import MessageDispatcher
 from moteconnection.connection import Connection
 
-from .deva_packets import (
-    DeviceAnnouncementPacket, DeviceFeaturesPacket, DeviceDescriptionPacket, DeviceAnnouncementPacketV2,
-    ANNOUNCEMENT_PACKETS
-)
+from .deva_packets import deserialize, DeviceAnnouncementPacketBase
 from .utils import FeatureMap
 from .query import Query
 from .response import Response
@@ -51,7 +48,7 @@ class NetworkAddressTranslator(dict):
         raise TypeError("Address translator requires GUID or integer address!")
 
     def add_info(self, source, packet):
-        assert isinstance(packet, ANNOUNCEMENT_PACKETS)
+        assert isinstance(packet, DeviceAnnouncementPacketBase)
         guid = six.binary_type(packet.guid.serialize()).encode("hex").upper()
         if guid not in self or self[guid] != source:
             self[guid] = source
@@ -169,7 +166,7 @@ class DAReceiver(object):
             else:
 
                 log.debug("Incoming packet: (%s) %s", packet.__class__.__name__, packet)
-                if isinstance(packet, ANNOUNCEMENT_PACKETS):
+                if isinstance(packet, DeviceAnnouncementPacketBase):
                     self._network_address_mapping.add_info(incoming_message.source, packet)
 
                 response = None
@@ -182,7 +179,7 @@ class DAReceiver(object):
                     response = self._pending_queries[incoming_message.source].receive_packet(packet)
                 # otherwise emit it
                 # Should be a DeviceAnnouncementPacket, but other agents may also be requesting data
-                elif isinstance(packet, ANNOUNCEMENT_PACKETS):
+                elif isinstance(packet, DeviceAnnouncementPacketBase):
                     response = Response([packet])
 
                 # Make sure to remember the feature_list_hash -> features combination for future reference
@@ -209,10 +206,8 @@ class DAReceiver(object):
                 requests.append(Query.State.list_features)
 
             query = Query(guid, addr, requests, self._network_address_mapping, self.feature_map, self.period)
-            if destination in self._pending_queries:
-                if not self._pending_queries[destination].is_equivalent(query):
-                    self._pending_queries[destination] = query
-            else:
+            if destination not in self._pending_queries or not self._pending_queries[destination].is_equivalent(query):
+                log.debug('Adding query %s.', query)
                 self._pending_queries[destination] = query
         else:
             log.warning("Active query already exists for %s", destination)
@@ -239,26 +234,9 @@ class DAReceiver(object):
         :returns: Deserialized packet
         """
         if len(message.payload) > 0:
-            ptp = ord(message.payload[0])
-            if ptp == DeviceAnnouncementPacket.DEVA_ANNOUNCEMENT:
-                version = ord(message.payload[1])
-                if version == 1:
-                    packet = DeviceAnnouncementPacket()
-                elif version == 2:
-                    packet = DeviceAnnouncementPacketV2()
-                else:
-                    raise ValueError('Unknown packet %s', message)
-            elif ptp == DeviceDescriptionPacket.DEVA_DESCRIPTION:
-                packet = DeviceDescriptionPacket()
-            elif ptp == DeviceFeaturesPacket.DEVA_FEATURES:
-                packet = DeviceFeaturesPacket()
-
-            else:
-                log.warning("header %s", ptp)
-                raise ValueError("header {}".format(ptp))
 
             try:
-                packet.deserialize(message.payload)
+                packet = deserialize(message.payload)
             except ValueError:
                 log.exception("Malformed packet: %s", message)
                 raise

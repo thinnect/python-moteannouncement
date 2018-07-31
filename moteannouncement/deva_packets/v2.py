@@ -1,92 +1,40 @@
-"""deva_packets.py: DeviceAnnouncement packets."""
-
-from datetime import datetime
-
-from serdepa import SerdepaPacket, nx_uint8, Array, nx_uint32, nx_int32, nx_int64, List
-
 import uuid
 
+from enum import Enum
 import six
 
-from .utils import strtime, chunk
+from serdepa import Array, List, nx_uint8, nx_uint32, nx_int32, nx_int64
 
-__author__ = "Raido Pahtma, Kaarel Ratas"
-__license__ = "MIT"
-
-
-class TimestampMixin(object):
-    def deserialize(self, *args, **kwargs):
-        self.arrived = datetime.utcnow().replace(tzinfo=None)
-        super(TimestampMixin, self).deserialize(*args, **kwargs)
+from moteannouncement.deva_packets import base
+from moteannouncement.utils import chunk, strtime
 
 
-@six.python_2_unicode_compatible
-class DeviceAnnouncementPacket(TimestampMixin, SerdepaPacket):
-    DEVA_ANNOUNCEMENT = 0x00
-    _fields_ = [
-        ("header", nx_uint8),
-        ("version", nx_uint8),
-        ("guid", Array(nx_uint8, 8)),
-        ("boot_number", nx_uint32),
+class RadioTechnologies(Enum):
+    UNKNOWN =                0
+    IEEE_802_15_4 =          1
+    BLE =                    2
+    BLE_PLUS_IEEE_802_15_4 = 3
+    IEEE_802_11 =            4
 
-        ("boot_time", nx_int64),
-        ("uptime", nx_uint32),
-        ("lifetime", nx_uint32),
-        ("announcement", nx_uint32),
-
-        ("uuid", Array(nx_uint8, 16)),
-
-        ("latitude", nx_int32),
-        ("longitude", nx_int32),
-        ("elevation", nx_int32),
-
-        ("ident_timestamp", nx_int64),
-
-        ("feature_list_hash", nx_uint32)
-    ]
-
-    def __init__(self, **kwargs):
-        super(DeviceAnnouncementPacket, self).__init__(**kwargs)
-        self.header = self.DEVA_ANNOUNCEMENT
-        self.version = 0x01
-
-    @classmethod
-    def sample(cls):
-        dap = DeviceAnnouncementPacket()
-        for i in range(0, 8):
-            dap.guid.append(i)
-            # dap.guid[i] = i
-        dap.boot_number = 8
-        dap.boot_time = 1496995442
-        dap.uptime = 100
-        dap.lifetime = dap.boot_number * dap.uptime
-        dap.announcement = 1
-        for i in range(0, 15):
-            dap.uuid.append(i)
-            # dap.uuid[i] = i
-        dap.latitude = 58*1000000
-        dap.longitude = -24*1000000
-        dap.elevation = 1000
-        dap.ident_timestamp = 1415463675
-        dap.feature_list_hash = 0x12345678
-        return dap
-
-    def __str__(self):
-        return "{:02X}:{:02X} {} b:{}@{} {}+{} ({}) a:{} [{};{};{}] {}({:x}) <{:08x}>".format(
-            self.header, self.version,
-            bytes(self.guid.serialize()).encode("hex").upper(),
-            self.boot_number, strtime(self.boot_time),
-            self.lifetime, self.uptime,
-            self.announcement,
-            uuid.UUID(bytes(self.uuid.serialize()).encode("hex")),
-            self.latitude, self.longitude, self.elevation,
-            strtime(self.ident_timestamp), self.ident_timestamp, self.feature_list_hash
-        )
+    @property
+    def pretty_name(self):
+        if self is RadioTechnologies.UNKNOWN:
+            return 'unknown'
+        elif self is RadioTechnologies.IEEE_802_15_4:
+            return '802.15.4'
+        elif self is RadioTechnologies.BLE:
+            return 'BLE'
+        elif self is RadioTechnologies.BLE_PLUS_IEEE_802_15_4:
+            return 'BLE+802.15.4'
+        elif self is RadioTechnologies.IEEE_802_11:
+            return "802.11"
+        else:
+            raise ValueError('Unknown radio technology value: {}'.format(self))
 
 
 @six.python_2_unicode_compatible
-class DeviceAnnouncementPacketV2(TimestampMixin, SerdepaPacket):
-    DEVA_ANNOUNCEMENT = 0x00
+class DeviceAnnouncementPacket(base.DeviceAnnouncementPacketBase):
+    VERSION = 0x02
     _fields_ = [
         ("header", nx_uint8),
         ("version", nx_uint8),
@@ -105,15 +53,27 @@ class DeviceAnnouncementPacketV2(TimestampMixin, SerdepaPacket):
         ("longitude", nx_int32),
         ("elevation", nx_int32),
 
+        ("_radio_technology", nx_uint8),
+        ("radio_channel", nx_uint8),
+
         ("ident_timestamp", nx_int64),
 
         ("feature_list_hash", nx_uint32)
     ]
 
-    def __init__(self, **kwargs):
-        super(DeviceAnnouncementPacketV2, self).__init__(**kwargs)
-        self.header = self.DEVA_ANNOUNCEMENT
-        self.version = 0x02
+    @property
+    def radio_technology(self):
+        """
+        :rtype: RadioTechnologies
+        """
+        return RadioTechnologies(self._radio_technology)
+
+    @radio_technology.setter
+    def radio_technology(self, value):
+        """
+        :type value: RadioTechnologies
+        """
+        self._radio_technology = value.value
 
     @property
     def position_type(self):
@@ -125,7 +85,7 @@ class DeviceAnnouncementPacketV2(TimestampMixin, SerdepaPacket):
 
     @classmethod
     def sample(cls):
-        dap = DeviceAnnouncementPacketV2()
+        dap = DeviceAnnouncementPacket()
         for i in range(0, 8):
             dap.guid.append(i)
             # dap.guid[i] = i
@@ -159,8 +119,8 @@ class DeviceAnnouncementPacketV2(TimestampMixin, SerdepaPacket):
 
 
 @six.python_2_unicode_compatible
-class DeviceDescriptionPacket(TimestampMixin, SerdepaPacket):
-    DEVA_DESCRIPTION = 0x01
+class DeviceDescriptionPacket(base.DeviceDescriptionPacketBase):
+    VERSION = 0x02
     _fields_ = [
         ("header", nx_uint8),
         ("version", nx_uint8),
@@ -168,6 +128,10 @@ class DeviceDescriptionPacket(TimestampMixin, SerdepaPacket):
         ("boot_number", nx_uint32),
 
         ("platform", Array(nx_uint8, 16)),
+        ("hw_major_version", nx_uint8),
+        ("hw_minor_version", nx_uint8),
+        ("hw_assem_version", nx_uint8),
+
         ("manufacturer", Array(nx_uint8, 16)),
         ("production", nx_int64),
 
@@ -177,27 +141,30 @@ class DeviceDescriptionPacket(TimestampMixin, SerdepaPacket):
         ("sw_patch_version", nx_uint8),
     ]
 
-    def __init__(self, **kwargs):
-        super(DeviceDescriptionPacket, self).__init__(**kwargs)
-        self.header = self.DEVA_DESCRIPTION
-        self.version = 0x02
+    @property
+    def sw_version(self):
+        return "{0.sw_major_version}.{0.sw_minor_version}.{0.sw_patch_version}".format(self)
+
+    @property
+    def hw_version(self):
+        return "{0.hw_major_version}.{0.hw_minor_version}.{0.hw_assem_version}".format(self)
 
     def __str__(self):
-        return "{:02X}:{:02X} {} b:{} p:{} m:{} @{} {}.{}.{} {}({:x})".format(
+        return "{:02X}:{:02X} {} b:{} p:{} m:{} @{} sw:{} hw:{} {}({:x})".format(
             self.header, self.version,
             bytes(self.guid.serialize()).encode("hex").upper(),
             self.boot_number,
             uuid.UUID(bytes(self.platform.serialize()).encode("hex")),
             uuid.UUID(bytes(self.manufacturer.serialize()).encode("hex")),
             strtime(self.production),
-            self.sw_major_version, self.sw_minor_version, self.sw_patch_version,
+            self.sw_version, self.hw_version,
             strtime(self.ident_timestamp), self.ident_timestamp
         )
 
 
 @six.python_2_unicode_compatible
-class DeviceFeaturesPacket(TimestampMixin, SerdepaPacket):
-    DEVA_FEATURES = 0x02
+class DeviceFeaturesPacket(base.DeviceFeaturesPacketBase):
+    VERSION = 0x02
     _fields_ = [
         ("header", nx_uint8),
         ("version", nx_uint8),
@@ -209,11 +176,6 @@ class DeviceFeaturesPacket(TimestampMixin, SerdepaPacket):
 
         ("features", List(nx_uint8))  # List(Array(nx_uint8, 16))
     ]
-
-    def __init__(self, **kwargs):
-        super(DeviceFeaturesPacket, self).__init__(**kwargs)
-        self.header = self.DEVA_FEATURES
-        self.version = 0x02
 
     def __str__(self):
         s = "{:02X}:{:02X} {} b:{} features {}/{}".format(
@@ -230,22 +192,16 @@ class DeviceFeaturesPacket(TimestampMixin, SerdepaPacket):
         return [str(uuid.UUID(u)) for u in chunk(ftrs, 32)]
 
 
-class DeviceRequestPacket(SerdepaPacket):
-    DEVA_QUERY = 0x10
-    DEVA_DESCRIBE = 0x11
+class DeviceRequestPacket(base.DeviceRequestPacketBase):
+    VERSION = 0x02
     _fields_ = [
         ("header", nx_uint8),
         ("version", nx_uint8)
     ]
 
-    def __init__(self, request=DEVA_QUERY, **kwargs):
-        super(DeviceRequestPacket, self).__init__(**kwargs)
-        self.header = request
-        self.version = 0x02
 
-
-class DeviceFeatureRequestPacket(SerdepaPacket):
-    DEVA_LIST_FEATURES = 0x12
+class DeviceFeatureRequestPacket(base.DeviceFeatureRequestPacketBase):
+    VERSION = 0x02
     _fields_ = [
         ("header", nx_uint8),
         ("version", nx_uint8),
@@ -254,9 +210,4 @@ class DeviceFeatureRequestPacket(SerdepaPacket):
 
     def __init__(self, offset=0, **kwargs):
         super(DeviceFeatureRequestPacket, self).__init__(**kwargs)
-        self.header = self.DEVA_LIST_FEATURES
-        self.version = 0x02
         self.offset = offset
-
-
-ANNOUNCEMENT_PACKETS = (DeviceAnnouncementPacket, DeviceAnnouncementPacketV2)

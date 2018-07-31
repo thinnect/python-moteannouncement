@@ -7,15 +7,19 @@ import json
 import six
 
 from .deva_packets import (
-    DeviceAnnouncementPacket, DeviceAnnouncementPacketV2, DeviceDescriptionPacket, DeviceFeaturesPacket,
-    ANNOUNCEMENT_PACKETS
+    DeviceAnnouncementPacketBase, DeviceDescriptionPacketBase, DeviceFeaturesPacketBase, v2
 )
 from .utils import strtime
 
 
 DeviceInfo = namedtuple(
     'DeviceInfo',
-    ['guid', 'application', 'position_type', 'latitude', 'longitude', 'elevation', 'ident_timestamp']
+    [
+        'guid', 'application',
+        'position_type', 'latitude', 'longitude', 'elevation',
+        'radio_technology', 'radio_channel',
+        'ident_timestamp'
+    ]
 )
 BootInfo = namedtuple(
     'BootInfo',
@@ -23,7 +27,7 @@ BootInfo = namedtuple(
 )
 DeviceDescription = namedtuple(
     'DeviceDescription',
-    ['platform', 'manufacturer', 'production', 'software_version']
+    ['platform', 'manufacturer', 'production', 'software_version', 'hardware_version']
 )
 
 
@@ -41,7 +45,7 @@ class Response(object):
         """
         :param list[serdepa.SerdepaPacket] packets: A list of Device Announcement packets
         """
-        self.version = '0.2.0'
+        self.version = '0.2.1'
         self.arrival = datetime.datetime.utcnow()
         self.device = None
         self.boot = None
@@ -49,16 +53,11 @@ class Response(object):
         self.description = None
         self.features = None
         for packet in packets:
-            if isinstance(packet, ANNOUNCEMENT_PACKETS):
+            if isinstance(packet, DeviceAnnouncementPacketBase):
                 self._init_default_announcement_message(packet)
-            elif isinstance(packet, DeviceDescriptionPacket):
-                self.description = DeviceDescription(
-                    platform=_get_uuid(packet.platform.serialize()),
-                    manufacturer=_get_uuid(packet.manufacturer.serialize()),
-                    production=strtime(packet.production),
-                    software_version="{0.sw_major_version}.{0.sw_minor_version}.{0.sw_patch_version}".format(packet)
-                )
-            elif isinstance(packet, DeviceFeaturesPacket):
+            elif isinstance(packet, DeviceDescriptionPacketBase):
+                self.description = self._construct_description(packet)
+            elif isinstance(packet, DeviceFeaturesPacketBase):
                 if self.features is None:
                     self.features = []
                 self.features.extend(packet.feature_uuids)
@@ -66,7 +65,7 @@ class Response(object):
                 raise ValueError("Unknown packet: {}".format(packet))
 
     def _init_default_announcement_message(self, packet):
-        is_v2 = isinstance(packet, DeviceAnnouncementPacketV2)
+        is_v2 = isinstance(packet, v2.DeviceAnnouncementPacket)
         self.device = DeviceInfo(
             guid=encode(packet.guid.serialize(), "hex").decode().upper(),
             application=_get_uuid(packet.uuid.serialize()),
@@ -74,6 +73,8 @@ class Response(object):
             latitude=packet.latitude / 1E6,
             longitude=packet.longitude / 1E6,
             elevation=packet.elevation / 100,
+            radio_technology=packet.radio_technology.pretty_name if is_v2 else 'unknown',
+            radio_channel=packet.radio_channel if is_v2 else 0,
             ident_timestamp='{:x}'.format(packet.ident_timestamp)
         )
         self.boot = BootInfo(
@@ -84,6 +85,18 @@ class Response(object):
             announcement=packet.announcement
         )
         self.feature_list_hash = '{:x}'.format(packet.feature_list_hash)
+
+    @staticmethod
+    def _construct_description(packet):
+        is_v2 = isinstance(packet, v2.DeviceDescriptionPacket)
+        return DeviceDescription(
+            platform=_get_uuid(packet.platform.serialize()),
+            manufacturer=_get_uuid(packet.manufacturer.serialize()),
+            production=strtime(packet.production),
+            software_version=packet.sw_version,
+            hardware_version=packet.hw_version if is_v2 else None,
+
+        )
 
     @property
     def as_dict(self):

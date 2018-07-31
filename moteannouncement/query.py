@@ -8,9 +8,8 @@ from enum import Enum
 from moteconnection.message import Message
 
 from .deva_packets import (
-    DeviceRequestPacket, DeviceFeatureRequestPacket,
-    DeviceAnnouncementPacket, DeviceAnnouncementPacketV2, DeviceDescriptionPacket, DeviceFeaturesPacket,
-    ANNOUNCEMENT_PACKETS
+    DeviceAnnouncementPacketBase, DeviceDescriptionPacketBase, DeviceFeaturesPacketBase,
+    DeviceRequestPacketBase, v2
 )
 from .response import Response
 
@@ -103,11 +102,11 @@ class Query(object):
         """
         if self.destination_address is not None:
             if self.state is self.State.query:
-                d = DeviceRequestPacket()
+                d = v2.DeviceRequestPacket()
             elif self.state is self.State.describe:
-                d = DeviceRequestPacket(DeviceRequestPacket.DEVA_DESCRIBE)
+                d = v2.DeviceRequestPacket(DeviceRequestPacketBase.DEVA_DESCRIBE)
             elif self.state is self.State.list_features:
-                d = DeviceFeatureRequestPacket(self._offset)
+                d = v2.DeviceFeatureRequestPacket(self._offset)
             else:
                 d = None
             if d is not None:
@@ -119,38 +118,35 @@ class Query(object):
         return None
 
     def _advance_state(self):
-        logger.debug('states: %s', self._states)
         self.state = self._states.pop(0) if self._states else self.State.done
 
     def receive_packet(self, packet):
         """
 
         :param packet:
-        :type packet: DeviceAnnouncementPacket | DeviceAnnouncementPacketV2 | DeviceDescriptionPacket | DeviceFeaturesPacket
+        :type packet: DeviceAnnouncementPacketBase | DeviceAnnouncementPacketV2 | DeviceDescriptionPacket |
+        DeviceFeaturesPacket
         :return: List of packets to emit
         :rtype: None | Response
         """
 
-        known_packets = (
-            DeviceAnnouncementPacket, DeviceAnnouncementPacketV2,
-            DeviceDescriptionPacket, DeviceFeaturesPacket
-        )
+        known_packets = (DeviceAnnouncementPacketBase, DeviceDescriptionPacketBase, DeviceFeaturesPacketBase)
         if isinstance(packet, known_packets):
             if (
-                    isinstance(packet, ANNOUNCEMENT_PACKETS) and
-                    packet.header == DeviceAnnouncementPacket.DEVA_ANNOUNCEMENT and
+                    isinstance(packet, DeviceAnnouncementPacketBase) and
+                    packet.header == DeviceAnnouncementPacketBase.DEVA_ANNOUNCEMENT and
                     self.state is self.State.query
             ):
                 self._advance_state()
             elif (
-                    isinstance(packet, DeviceDescriptionPacket) and
-                    packet.header == DeviceDescriptionPacket.DEVA_DESCRIPTION and
+                    isinstance(packet, DeviceDescriptionPacketBase) and
+                    packet.header == DeviceDescriptionPacketBase.DEVA_DESCRIPTION and
                     self.state is self.State.describe
             ):
                 self._advance_state()
             elif (
-                    isinstance(packet, DeviceFeaturesPacket) and
-                    packet.header == DeviceFeaturesPacket.DEVA_FEATURES and
+                    isinstance(packet, DeviceFeaturesPacketBase) and
+                    packet.header == DeviceFeaturesPacketBase.DEVA_FEATURES and
                     self.state is self.State.list_features
             ):
                 self._offset = packet.offset + len(packet.features) / 16  # TODO remove 16 when no longer arr
@@ -163,7 +159,7 @@ class Query(object):
         else:
             raise ValueError("Unknown packet {}".format(packet.__class__.__name__))
 
-        if not isinstance(packet, ANNOUNCEMENT_PACKETS) and not self._incoming_messages:
+        if not isinstance(packet, DeviceAnnouncementPacketBase) and not self._incoming_messages:
             self._incoming_messages = [self._mapping.announcements[self._destination]]
         self._incoming_messages.append(packet)
         self._last_contact = packet.arrived
@@ -174,7 +170,7 @@ class Query(object):
         response = None
         # Special case for when we already know the features of the `feature_list_hash`
         if self.state is self.State.list_features:
-            if isinstance(self._incoming_messages[0], ANNOUNCEMENT_PACKETS):
+            if isinstance(self._incoming_messages[0], DeviceAnnouncementPacketBase):
                 announcement = self._incoming_messages[0]
             else:
                 announcement = self._mapping.announcements[self._destination]

@@ -9,10 +9,10 @@ from six.moves import queue
 from moteconnection.message import Message
 
 from ..deva_receiver import NetworkAddressTranslator, Query, DAReceiver
-from ..deva_packets import (
-    DeviceAnnouncementPacket, DeviceAnnouncementPacketV2,
-    DeviceDescriptionPacket, DeviceFeaturesPacket
+from ..deva_packets.v1 import (
+    DeviceAnnouncementPacket, DeviceDescriptionPacket, DeviceFeaturesPacket
 )
+from ..deva_packets.v2 import DeviceAnnouncementPacket as DeviceAnnouncementPacketV2
 from ..utils import FeatureMap
 
 
@@ -446,6 +446,8 @@ class DeviceAnnouncementReceiverTester(TestCase):
                 b'\x00\x00\x00\x00'                                                     # latitude
                 b'\x00\x00\x00\x00'                                                     # longitude
                 b'\x00\x00\x00\x00'                                                     # elevation
+                b'\x00'                                                                 # radio_technology
+                b'\x00'                                                                 # radio_channel
                 b'\x00\x00\x00\x00\x59\x43\xEC\x33'                                     # ident_timestamp
                 b'\xAF\x90\xAF\x90'                                                     # feature_list_hash
             )
