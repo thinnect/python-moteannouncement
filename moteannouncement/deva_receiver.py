@@ -10,10 +10,12 @@ import six
 from moteconnection.message import MessageDispatcher
 from moteconnection.connection import Connection
 
+from .announcer import Announcer
 from .deva_packets import deserialize, DeviceAnnouncementPacketBase
-from .utils import FeatureMap
+from .deva_packets.v2 import DeviceAnnouncementPacket
 from .query import Query
 from .response import Response
+from .utils import FeatureMap
 
 import logging
 log = logging.getLogger(__name__)
@@ -69,7 +71,7 @@ class DAReceiver(object):
     :type _pending_queries: dict[int, Query]
     """
 
-    def __init__(self, connection_string, address, period, mapping=NetworkAddressTranslator()):
+    def __init__(self, connection_string, address, period, mapping=None):
         """
 
         :param six.text_type connection_string: Connection string, like sf@localhost:9002 or
@@ -78,6 +80,8 @@ class DAReceiver(object):
         :param int period: The period of
         :param mapping:
         """
+        if mapping is None:
+            mapping = NetworkAddressTranslator()
         self.address = address
         self._connection_string = connection_string
 
@@ -95,11 +99,18 @@ class DAReceiver(object):
         self._network_address_mapping = mapping
         self.feature_map = FeatureMap()
 
+        self._announcer = Announcer()
+
+        self._connected = False
+
     @property
     def connection(self):
         if self._connection is None:
             self._connection = Connection()
-            self._connection.connect(self._connection_string, reconnect=10)
+            self._connection.connect(self._connection_string,
+                                     reconnect=10,
+                                     connected=self.connected,
+                                     disconnected=self.disconnected)
             self._connection.register_dispatcher(self.dispatcher)
         return self._connection
 
@@ -114,6 +125,16 @@ class DAReceiver(object):
     def mapping(self):
         return self._network_address_mapping
 
+    @property
+    def connection_established(self):
+        return self._connected
+
+    def connected(self):
+        self._connected = True
+
+    def disconnected(self):
+        self._connected = False
+
     def __enter__(self):
         assert self.connection is not None  # creates and establishes the connection
         return self
@@ -127,6 +148,22 @@ class DAReceiver(object):
         :return:
         :rtype: None | moteannouncement.response.Response
         """
+        # Skip everything if connection is down.
+        if not self.connection_established:
+            log.warning('Connection not established. Waiting.')
+            time.sleep(0.1)
+            return
+
+        # Handle self announcement
+        try:
+            announcement_message = self._announcer.announce()
+        except Exception:
+            log.exception('Exception while generating self-announcement for the Mist(tm) network.')
+        else:
+            if announcement_message is not None:
+                log.info('Sending announcement to the Mist(tm) network.')
+                self.connection.send(announcement_message)
+
         # Remove queries that are done
         for destination, query in dict(self._pending_queries).items():
             if query.state is Query.State.done:
@@ -211,6 +248,46 @@ class DAReceiver(object):
                 self._pending_queries[destination] = query
         else:
             log.warning("Active query already exists for %s", destination)
+
+    def setup_announcement(self, guid, uuid,
+                           position_type=None, latitude=None, longitude=None, elevation=None,
+                           radio_technology=None, feature_list=None,
+                           radio_channel=None, ident_timestamp=None):
+        """
+        Sends out an announcement packet to the network.
+        :param str guid: EUI64 of the radio module
+        :param uuid.UUID uuid: The UUID of the device
+        :param str position_type: The position type (F:fix, C:central(special F), G:gps, L:local, A:area, U:unknown)
+        :param int latitude: Millionths of degrees latitude
+        :param int longitude: Millionths of degrees longitude
+        :param int elevation: Metres elevation
+        :param moteannouncement.RadioTechnologies radio_technology: The radio technology of the radio module
+        :param int radio_channel: The radio channel of the radio module
+        :param int ident_timestamp: The identification timestamp of this device
+        :param list[uuid.UUID] feature_list: The feature list
+        :return:
+        """
+        if self._announcer.guid is None:
+            self._announcer.guid = guid
+            self._announcer.uuid = uuid
+            if position_type is not None:
+                self._announcer.position_type = position_type
+            if latitude is not None:
+                self._announcer.latitude = latitude
+            if longitude is not None:
+                self._announcer.longitude = longitude
+            if elevation is not None:
+                self._announcer.elevation = elevation
+            if radio_technology is not None:
+                self._announcer.radio_technology = radio_technology
+            if radio_channel is not None:
+                self._announcer.radio_channel = radio_channel
+            if ident_timestamp is not None:
+                self._announcer.ident_timestamp = ident_timestamp
+            if feature_list is not None:
+                self._announcer.features = feature_list
+
+        return self._announcer
 
     @property
     def active_queries(self):

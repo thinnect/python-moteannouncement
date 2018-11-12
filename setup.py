@@ -7,12 +7,10 @@ Python application for receiving moteannouncements and sending queries.
 from setuptools import setup, find_packages
 from os.path import join as pjoin
 
-import moteannouncement
-
 doclines = __doc__.split("\n")
 
 setup(name="moteannouncement",
-      version=moteannouncement.__version__,
+      version="0.4.0.dev0",
       description="Python library for moteannouncement protocol",
       long_description="\n".join(doclines[2:]),
       url="http://github.com/thinnect/python-moteannouncement",
@@ -22,7 +20,7 @@ setup(name="moteannouncement",
       platforms=["any"],
       packages=find_packages(),
       install_requires=[
-          "moteconnection", "serdepa", "pytz", "six", "enum34"
+          "moteconnection", "serdepa", "pytz", "six", "enum34", "uptime"
       ],
       tests_require=["nose", "mock"],
       scripts=[pjoin("bin", "moteannouncements")],

@@ -3,4 +3,4 @@
 __author__ = "Raido Pahtma"
 __license__ = "MIT"
 
-__version__ = "0.3.1"
+from moteannouncement.deva_packets.v2 import RadioTechnologies
