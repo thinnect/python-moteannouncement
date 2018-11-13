@@ -10,7 +10,7 @@ from os.path import join as pjoin
 doclines = __doc__.split("\n")
 
 setup(name="moteannouncement",
-      version="0.4.0.dev0",
+      version="0.4.0",
       description="Python library for moteannouncement protocol",
       long_description="\n".join(doclines[2:]),
       url="http://github.com/thinnect/python-moteannouncement",
