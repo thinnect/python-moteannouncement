@@ -10,11 +10,11 @@ from moteannouncement.utils import chunk, strtime
 
 
 class RadioTechnologies(Enum):
-    UNKNOWN =                0
-    IEEE_802_15_4 =          1
-    BLE =                    2
+    UNKNOWN = 0
+    IEEE_802_15_4 = 1
+    BLE = 2
     BLE_PLUS_IEEE_802_15_4 = 3
-    IEEE_802_11 =            4
+    IEEE_802_11 = 4
 
     @property
     def pretty_name(self):
@@ -98,8 +98,8 @@ class DeviceAnnouncementPacket(base.DeviceAnnouncementPacketBase):
             dap.uuid.append(i)
             # dap.uuid[i] = i
         dap.position_type = 'G'
-        dap.latitude = 58*1000000
-        dap.longitude = -24*1000000
+        dap.latitude = 58 * 1000000
+        dap.longitude = -24 * 1000000
         dap.elevation = 1000
         dap.ident_timestamp = 1415463675
         dap.feature_list_hash = 0x12345678
