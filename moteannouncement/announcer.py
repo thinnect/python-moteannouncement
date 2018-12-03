@@ -151,22 +151,23 @@ class Announcer(object):
             return
         if time.time() > self._last_announcement + self.announcement_interval:
             packet = DeviceAnnouncementPacket()
-            for i, byte in enumerate(decode(self.guid, 'hex')):
+            guidstring = decode(self.guid, 'hex')
+            for i in range(len(guidstring)):
                 try:
-                    packet.guid[i] = ord(byte)
+                    packet.guid[i] = ord(guidstring[i:i+1])
                 except IndexError:
-                    packet.guid.append(ord(byte))
+                    packet.guid.append(ord(guidstring[i:i+1]))
             # packet.guid = [ord(byte) for byte in decode(self.guid, 'hex')]
             packet.boot_number = self.boot_number
             packet.boot_time = self.boot_time
             packet.uptime = self.uptime
             packet.lifetime = self.lifetime
             packet.announcement = self.announcement
-            for i, byte in enumerate(self.uuid.bytes):
+            for i in range(len(self.uuid.bytes)):
                 try:
-                    packet.uuid[i] = ord(byte)
+                    packet.uuid[i] = ord(self.uuid.bytes[i:i+1])
                 except IndexError:
-                    packet.uuid.append(ord(byte))
+                    packet.uuid.append(ord(self.uuid.bytes[i:i+1]))
             packet.position_type = self.position_type
             packet.latitude = self._latitude
             packet.longitude = self._longitude
