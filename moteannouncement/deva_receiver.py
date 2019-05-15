@@ -1,14 +1,16 @@
 """deva_receiver.py: DeviceAnnouncement receiver with query capabilities"""
 from __future__ import print_function, unicode_literals
 
-import time
+from codecs import encode
 from collections import OrderedDict
+import time
 
 from six.moves import queue as Queue
 import six
 
 from moteconnection.message import MessageDispatcher
 from moteconnection.connection import Connection
+from serdepa.exceptions import DeserializeError
 
 from .announcer import Announcer
 from .deva_packets import deserialize, DeviceAnnouncementPacketBase
@@ -198,7 +200,7 @@ class DAReceiver(object):
             log.debug("Incoming message: %s", incoming_message)
             try:
                 packet = self._deserialize(incoming_message)
-            except ValueError:
+            except (ValueError, DeserializeError):
                 log.exception("Error deserializing incoming packet: %s", incoming_message)
             else:
 
@@ -207,7 +209,7 @@ class DAReceiver(object):
                     self._network_address_mapping.add_info(incoming_message.source, packet)
 
                 response = None
-                guid = six.binary_type(packet.guid.serialize()).encode("hex").upper()
+                guid = encode(packet.guid.serialize(), "hex").upper()
                 # if this packet belongs to a pending query, let it decide
                 if guid in self._pending_queries:
                     response = self._pending_queries[guid].receive_packet(packet)
@@ -314,7 +316,7 @@ class DAReceiver(object):
 
             try:
                 packet = deserialize(message.payload)
-            except ValueError:
+            except (ValueError, DeserializeError):
                 log.exception("Malformed packet: %s", message)
                 raise
         else:

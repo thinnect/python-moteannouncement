@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 class Announcer(object):
     """
-    Manages the sending and responsing to announcement requests.
+    Manages the sending and responding to announcement requests.
 
     :type guid: str
     :type uuid: uuid.UUID
