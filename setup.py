@@ -13,7 +13,7 @@ here = path.abspath(path.dirname(__file__))
 with open(path.join(here, 'README.md'), encoding='utf-8') as f:
     long_description = f.read()
 
-execfile(path.join(here, 'moteannouncement/version.py'))
+exec(open(path.join(here, 'moteannouncement/version.py')).read())
 
 setup(name="moteannouncement",
       version=__version__,
