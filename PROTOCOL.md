@@ -2,21 +2,20 @@
 
 # Protocol description
 
-The device announcement protocol is intended to allow devices to
-let other devices know about their existence in the networks and
-their properties. Therefore devices periodically broadcast
-announcement packets.
+The device announcement protocol is intended to allow devices to let other
+devices know about their existence in the networks and their properties.
+Therefore devices periodically broadcast announcement packets.
 
-**All data types in the packet are BigEndian**
+**All data types in the packets are BigEndian**
 
-## **PROTOCOL VERISON 1 and 2**
+## **PROTOCOL VERSION 1 and 2**
 
 Active queries will always receive a response no matter the version. The device
 will try to match the version specified in the query, but if it cannot, then it
 will respond with the latest version it is aware of.
 
 Version 1 and 2 only have differences in the announcement packets themselves.
-Periodic announcements are always sent using the latest version on the device.
+Periodic announcements are always sent using the latest version known to the device.
 
 ### Announcement packet version 1
 
@@ -62,6 +61,9 @@ int32  latitude;          // 1E6
 int32  longitude;         // 1E6
 int32  elevation;         // centimeters
 
+uint8_t radio_tech;       // 0:unknown(channel info invalid), 1:802.15.4, ...
+uint8_t radio_channel;    // Current primary radio channel of the device - 0 unknown / 255 hopping
+
 time64 ident_timestamp;   // Compilation time, unix timestamp, seconds
 
 uint32 feature_list_hash; // hash of feature UUIDs
@@ -81,6 +83,9 @@ The position type field is a single character, always uppercase:
  * G - position information has been obtained from a Global Navigation Satellite System.
  * F - position information has been given during deployment.
  * C - position information has been given during deployment and has been verified somehow.
+
+Version 2 also added radio technology information, see
+[DeviceAnnouncement.h](tos/types/DeviceAnnouncement.h) for defined options.
 
 ### Additional information
 
@@ -138,4 +143,21 @@ Provides a list of feature UUIDs, which indicate the features
 present and active on a device. For example listing available
 sensor sources and actuator devices.
 
-TODO Describe further ...
+Device features must be queried by offset with the device_description_request_t
+packet. The node will respond to each query with as many feature UUIDs as will
+fit in a single device_features_t packet (the length of which depends on the
+radio technology and configuration). Therefore several queries will have to be
+sent if the device has more features than it can fit in a single packet.
+The number of features carried by a response can be determined from the length
+of the packet header and the length of the packet, as the packet does not
+explicitly list the number of features carried, but only lists the total number
+of features and the offset of the first feature in the packet.
+
+The feature list is always ordered the same way and a hash of this list is
+present in the device_announcement_*_t packet, allowing the receiver to become
+aware of feature changes without having to query the list periodically.
+
+NOTE that in versions 1 and 2 of the protocol, the hash function has not been
+defined and may be implementation and thus node specific. Therefore it can only
+be used to detect changes in the list (the list must have changed if the hash
+has changed), but not for verification of the received list.
