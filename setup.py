@@ -3,16 +3,22 @@ moteannouncement: moteannouncement library.
 
 Python application for receiving moteannouncements and sending queries.
 """
-
+from codecs import open
+from os import path
 from setuptools import setup, find_packages
-from os.path import join as pjoin
 
-doclines = __doc__.split("\n")
+here = path.abspath(path.dirname(__file__))
+
+# Get the long description from the README file
+with open(path.join(here, 'README.md'), encoding='utf-8') as f:
+    long_description = f.read()
+
+execfile(path.join(here, 'moteannouncement/version.py'))
 
 setup(name="moteannouncement",
-      version="0.4.1.dev1",
+      version=__version__,
       description="Python library for moteannouncement protocol",
-      long_description="\n".join(doclines[2:]),
+      long_description=long_description,
       url="http://github.com/thinnect/python-moteannouncement",
       author="Raido Pahtma",
       author_email="raido@thinnect.com",
@@ -23,5 +29,5 @@ setup(name="moteannouncement",
           "moteconnection", "serdepa", "pytz", "six", "enum34", "uptime"
       ],
       tests_require=["nose", "mock"],
-      scripts=[pjoin("bin", "moteannouncements")],
+      scripts=[path.join("bin", "moteannouncements")],
       zip_safe=False)

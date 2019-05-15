@@ -4,3 +4,4 @@ __author__ = "Raido Pahtma"
 __license__ = "MIT"
 
 from moteannouncement.deva_packets.v2 import RadioTechnologies
+from moteannouncement.version import __version__
