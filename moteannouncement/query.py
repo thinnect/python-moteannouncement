@@ -164,9 +164,17 @@ class Query(object):
         self._incoming_messages.append(packet)
         self._last_contact = packet.arrived
 
-        return self._construct_response()
+        return self._construct_response(force=isinstance(packet, DeviceAnnouncementPacketBase))
 
-    def _construct_response(self):
+    def _construct_response(self, force=False):
+        """
+        Constructs a response to the server. Returns None if one is not needed.
+
+        :param bool force: Always send a response (even if the query hasn't ended).
+            Useful for forwarding DeviceAnnouncement packets.
+        :rtype: Response | None
+        :return: A response to the server
+        """
         response = None
         # Special case for when we already know the features of the `feature_list_hash`
         if self.state is self.State.list_features:
@@ -178,15 +186,20 @@ class Query(object):
             if feature_list_hash in self._feature_map:
                 self._known_features = self._feature_map[feature_list_hash]
                 self._advance_state()
-        # End special case
+        # The query has not completed. Schedule more messages.
         if self.state is not self.State.done:
             m = self._construct_message()
             if m is not None:
                 self._outgoing_buffer[0] = m
+        # We are done. Send response to server.
         else:
             response = Response(self._incoming_messages)
             if self._known_features is not None and response.features is None:
                 response.features = self._known_features
+
+        # Force response if needed
+        if response is None and force:
+            response = Response(self._incoming_messages)
         return response
 
     def __str__(self):
