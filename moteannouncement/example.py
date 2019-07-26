@@ -76,6 +76,7 @@ def main():
     parser.add_argument("--connection", default="sf@localhost:9002",
                         help="Connection string, like sf@localhost:9002 or serial@/dev/ttyUSB0:115200")
     parser.add_argument("--address", default=0x1234, type=arg_hex2int, help="Own address")
+    parser.add_argument("--group", default=0xff, type=arg_hex2int, help="AM Group")
     parser.add_argument("--period", default=10, type=int, help="Request period")
     parser.add_argument("--logging", default=None)
     args = parser.parse_args()
@@ -89,11 +90,11 @@ def main():
 
     signal.signal(signal.SIGINT, kbi_handler)
 
-    with DAReceiver(args.connection, args.address, args.period) as dar:
+    with DAReceiver(args.connection, args.address, args.group, args.period) as dar:
 
         if args.destination is not None:
             dar.query(addr=args.destination,
-                      info=False, description=False, features=True)
+                      info=True, description=True, features=True)
 
         while not interrupted.is_set():
             time.sleep(0.01)

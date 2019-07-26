@@ -160,7 +160,8 @@ class Query(object):
             raise ValueError("Unknown packet {}".format(packet.__class__.__name__))
 
         if not isinstance(packet, DeviceAnnouncementPacketBase) and not self._incoming_messages:
-            self._incoming_messages = [self._mapping.announcements[self._destination]]
+            if self._destination in self._mapping.announcements:
+                self._incoming_messages = [self._mapping.announcements[self._destination]]
         self._incoming_messages.append(packet)
         self._last_contact = packet.arrived
 
