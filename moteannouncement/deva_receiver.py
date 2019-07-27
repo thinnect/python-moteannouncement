@@ -152,7 +152,7 @@ class DAReceiver(object):
         """
         # Skip everything if connection is down.
         if not self.connection_established:
-            log.warning('Connection not established. Waiting.')
+            log.debug('Connection not established. Waiting.')
             time.sleep(0.1)
             return
 
