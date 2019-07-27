@@ -113,7 +113,7 @@ class DeviceAnnouncementPacket(base.DeviceAnnouncementPacketBase):
             self.boot_number, strtime(self.boot_time),
             self.lifetime, self.uptime,
             self.announcement,
-            uuid.UUID(encode(self.uuid.serialize(), "hex")),
+            uuid.UUID(decode(encode(self.uuid.serialize(), "hex"))),
             self.position_type, self.latitude, self.longitude, self.elevation,
             strtime(self.ident_timestamp), self.ident_timestamp, self.feature_list_hash
         )
@@ -155,8 +155,8 @@ class DeviceDescriptionPacket(base.DeviceDescriptionPacketBase):
             self.header, self.version,
             decode(encode(self.guid.serialize(), "hex")).upper(),
             self.boot_number,
-            uuid.UUID(encode(self.platform.serialize(), "hex")),
-            uuid.UUID(encode(self.manufacturer.serialize(), "hex")),
+            uuid.UUID(decode(encode(self.platform.serialize(), "hex"))),
+            uuid.UUID(decode(encode(self.manufacturer.serialize(), "hex"))),
             strtime(self.production),
             self.sw_version, self.hw_version,
             strtime(self.ident_timestamp), self.ident_timestamp
@@ -189,7 +189,7 @@ class DeviceFeaturesPacket(base.DeviceFeaturesPacketBase):
 
     @property
     def feature_uuids(self):
-        ftrs = encode(self.features.serialize(), "hex")
+        ftrs = decode(encode(self.features.serialize(), "hex"))
         return [str(uuid.UUID(u)) for u in chunk(ftrs, 32)]
 
 
