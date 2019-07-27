@@ -1,4 +1,5 @@
 import uuid
+from codecs import decode, encode
 
 import six
 
@@ -57,11 +58,11 @@ class DeviceAnnouncementPacket(base.DeviceAnnouncementPacketBase):
     def __str__(self):
         return "{:02X}:{:02X} {} b:{}@{} {}+{} ({}) a:{} [{};{};{}] {}({:x}) <{:08x}>".format(
             self.header, self.version,
-            bytes(self.guid.serialize()).encode("hex").upper(),
+            decode(encode(self.guid.serialize(), "hex")).upper(),
             self.boot_number, strtime(self.boot_time),
             self.lifetime, self.uptime,
             self.announcement,
-            uuid.UUID(bytes(self.uuid.serialize()).encode("hex")),
+            uuid.UUID(encode(self.uuid.serialize(), "hex")),
             self.latitude, self.longitude, self.elevation,
             strtime(self.ident_timestamp), self.ident_timestamp, self.feature_list_hash
         )
@@ -93,10 +94,10 @@ class DeviceDescriptionPacket(base.DeviceDescriptionPacketBase):
     def __str__(self):
         return "{:02X}:{:02X} {} b:{} p:{} m:{} @{} {} {}({:x})".format(
             self.header, self.version,
-            bytes(self.guid.serialize()).encode("hex").upper(),
+            decode(encode(self.guid.serialize(), "hex")).upper(),
             self.boot_number,
-            uuid.UUID(bytes(self.platform.serialize()).encode("hex")),
-            uuid.UUID(bytes(self.manufacturer.serialize()).encode("hex")),
+            uuid.UUID(encode(self.platform.serialize(), "hex")),
+            uuid.UUID(encode(self.manufacturer.serialize(), "hex")),
             strtime(self.production),
             self.sw_version,
             strtime(self.ident_timestamp), self.ident_timestamp
@@ -121,7 +122,7 @@ class DeviceFeaturesPacket(base.DeviceFeaturesPacketBase):
     def __str__(self):
         s = "{:02X}:{:02X} {} b:{} features {}/{}".format(
             self.header, self.version,
-            bytes(self.guid.serialize()).encode("hex").upper(),
+            decode(encode(self.guid.serialize(), "hex")).upper(),
             self.boot_number,
             self.offset, self.total
         )
@@ -129,7 +130,7 @@ class DeviceFeaturesPacket(base.DeviceFeaturesPacketBase):
 
     @property
     def feature_uuids(self):
-        ftrs = six.binary_type(self.features.serialize()).encode("hex")
+        ftrs = encode(self.features.serialize(), "hex")
         return [str(uuid.UUID(u)) for u in chunk(ftrs, 32)]
 
 
