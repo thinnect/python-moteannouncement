@@ -1,5 +1,5 @@
-moteconnection
-serdepa
+git+https://github.com/proactivity-lab/python-moteconnection.git
+git+https://github.com/thinnect/serdepa.git
 pytz
 six
 enum34
