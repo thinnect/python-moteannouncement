@@ -3,7 +3,6 @@ from __future__ import unicode_literals
 from unittest import TestCase
 
 from mock import patch, MagicMock
-import six
 from six.moves import queue
 
 from moteconnection.message import Message
@@ -36,7 +35,7 @@ class NetworkAddressTranslatorTester(TestCase):
     def test_add_info(self):
         packet = MagicMock(spec=DeviceAnnouncementPacket, arrived=None)
         packet.guid.serialize \
-            .return_value = six.binary_type(b'\x00\x00\x00\x00\x00\x00\xAA\xFF')
+            .return_value = b'\x00\x00\x00\x00\x00\x00\xAA\xFF'
         self.assertEqual(self.network_address_translator['000000000000AAFF'],
                          0xAAFF)
         self.network_address_translator.add_info(0xAABB, packet)

@@ -1,7 +1,7 @@
 """deva_receiver.py: DeviceAnnouncement receiver with query capabilities"""
 from __future__ import print_function, unicode_literals
 
-from codecs import encode
+from codecs import decode, encode
 from collections import OrderedDict
 import time
 
@@ -53,7 +53,7 @@ class NetworkAddressTranslator(dict):
 
     def add_info(self, source, packet):
         assert isinstance(packet, DeviceAnnouncementPacketBase)
-        guid = six.binary_type(packet.guid.serialize()).encode("hex").upper()
+        guid = decode(encode(packet.guid.serialize(), "hex")).upper()
         if guid not in self or self[guid] != source:
             self[guid] = source
             self[source] = guid
