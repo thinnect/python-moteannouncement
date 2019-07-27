@@ -1,0 +1,10 @@
+moteconnection
+serdepa
+pytz
+six
+enum34
+uptime
+
+# Tests
+nose
+mock
