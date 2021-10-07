@@ -73,7 +73,7 @@ class DAReceiver(object):
     :type _pending_queries: dict[int, Query]
     """
 
-    def __init__(self, connection_string, address, period, mapping=None):
+    def __init__(self, connection_string, address, group, period, mapping=None):
         """
 
         :param six.text_type connection_string: Connection string, like sf@localhost:9002 or
@@ -85,6 +85,7 @@ class DAReceiver(object):
         if mapping is None:
             mapping = NetworkAddressTranslator()
         self.address = address
+        self.group = group
         self._connection_string = connection_string
 
         self._connection = None
@@ -119,7 +120,7 @@ class DAReceiver(object):
     @property
     def dispatcher(self):
         if self._dispatcher is None:
-            self._dispatcher = MessageDispatcher(self.address, 0xFF)
+            self._dispatcher = MessageDispatcher(self.address, self.group)
             self._dispatcher.register_receiver(0xDA, self._incoming)
         return self._dispatcher
 
