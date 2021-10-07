@@ -5,7 +5,7 @@ from codecs import decode, encode
 from collections import OrderedDict
 import time
 
-from six.moves import queue as Queue
+import queue
 import six
 
 from moteconnection.message import MessageDispatcher
@@ -91,7 +91,7 @@ class DAReceiver(object):
         self._connection = None
         self._dispatcher = None
 
-        self._incoming = Queue.Queue()
+        self._incoming = queue.Queue()
 
         self._timestamp = time.time()
 
@@ -195,7 +195,7 @@ class DAReceiver(object):
 
         try:
             incoming_message = self._incoming.get(timeout=0.1)
-        except Queue.Empty:
+        except queue.Empty:
             pass
         else:
             log.debug("Incoming message: %s", incoming_message)
@@ -210,7 +210,7 @@ class DAReceiver(object):
                     self._network_address_mapping.add_info(incoming_message.source, packet)
 
                 response = None
-                guid = encode(packet.guid.serialize(), "hex").upper()
+                guid = packet.guid.serialize().hex().upper()
                 # if this packet belongs to a pending query, let it decide
                 if guid in self._pending_queries:
                     response = self._pending_queries[guid].receive_packet(packet)

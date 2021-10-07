@@ -1,9 +1,11 @@
-from __future__ import unicode_literals
 
 from unittest import TestCase
 
+import queue
+
+from codecs import decode
+
 from mock import patch, MagicMock
-from six.moves import queue
 
 from moteconnection.message import Message
 
@@ -410,7 +412,7 @@ class QueryTester(TestCase):
 @patch('moteannouncement.deva_receiver.Query')
 @patch('moteannouncement.deva_receiver.MessageDispatcher')
 @patch('moteannouncement.deva_receiver.Connection')
-@patch('moteannouncement.deva_receiver.Queue')
+@patch('moteannouncement.deva_receiver.queue')
 class DeviceAnnouncementReceiverTester(TestCase):
 
     def test_receive(self, queue_mock, connection_mock,
@@ -437,7 +439,7 @@ class DeviceAnnouncementReceiverTester(TestCase):
         queue_mock.Queue.return_value.get.side_effect = [message_mock,
                                                          queue.Empty()]
         queue_mock.Empty = queue.Empty
-        receiver = DAReceiver('', 0x0001, 1)
+        receiver = DAReceiver('', 0x0001, 0xFF, 1)
         receiver.connected()
         response = receiver.poll()
         self.assertIsNone(response.features)
@@ -473,7 +475,7 @@ class DeviceAnnouncementReceiverTester(TestCase):
         queue_mock.Queue.return_value.get.side_effect = [message_mock,
                                                          queue.Empty()]
         queue_mock.Empty = queue.Empty
-        receiver = DAReceiver('', 0x0001, 1)
+        receiver = DAReceiver('', 0x0001, 0xFF, 1)
         receiver.connected()
         response = receiver.poll()
         self.assertIsNone(response.features)
@@ -484,9 +486,8 @@ class DeviceAnnouncementReceiverTester(TestCase):
 
     def test_with_statement_exit(self, queue_mock, connection_mock,
                                  message_dispatcher_mock, query_mock):
-
         try:
-            with DAReceiver('', 0x0001, 1) as receiver:
+            with DAReceiver('', 0x0001, 0xFF, 1) as receiver:
                 raise AssertionError()
         except AssertionError:
             pass
@@ -505,7 +506,7 @@ class DeviceAnnouncementReceiverTester(TestCase):
 
     def test_query_creation(self, queue_mock, connection_mock,
                             message_dispatcher_mock, query_mock):
-        receiver = DAReceiver('', 0x0001, 1)
+        receiver = DAReceiver('', 0x0001, 0xFF, 1)
         receiver.query('0000000000000101', info=True, features=True)
 
         query_mock.assert_called_with(
@@ -513,3 +514,50 @@ class DeviceAnnouncementReceiverTester(TestCase):
             [query_mock.State.query, query_mock.State.list_features],
             receiver._network_address_mapping, receiver.feature_map, 1
         )
+
+
+@patch('moteannouncement.deva_receiver.queue')
+class DeviceAnnouncementUnexpectedDescriptionTester(TestCase):
+
+    def test_unexpected_description(self, queue_mock):
+        """
+        Test unexpected description packet when no announcement has been received.
+
+        Test scenario:
+        * No announcement packet has been cached.
+        * An active query exists for 8888888888888888
+        * A Device Description packet is received
+
+        Expected results:
+        * No error is thrown
+        """
+        message_mock = MagicMock(
+            spec=DeviceDescriptionPacket,
+            header=DeviceDescriptionPacket.DEVA_DESCRIPTION,
+            source=0x8888,
+            payload=decode(
+                '01'                                    # header
+                '02'                                    # version
+                '8888888888888888'                      # guid
+                '00000001'                              # boot number
+                '28ce63414906404abd548da44477dc4a'      # platform
+                '00' '01' '02'                          # hardware version
+                '6a74c3fd35384b5a8d6e42b71bfdfe4e'      # manufacturer
+                '0000000000abcdef'                      # production
+                '0000000000abcdef'                      # ident timestamp
+                '02' '03' '04',                         # software version
+                'hex'
+            )
+        )
+
+        queue_mock.Queue.return_value.get.side_effect = [message_mock, queue.Empty()]
+        queue_mock.Empty = queue.Empty
+
+        receiver = DAReceiver('', 0x0001, 0xFF, 1)
+        receiver.connected()
+
+        receiver.query('8888888888888888',
+                       info=False, description=True, features=True)
+
+        receiver.poll()
+        receiver.poll()
