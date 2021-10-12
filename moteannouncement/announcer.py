@@ -1,13 +1,17 @@
+"""announcer.py: """
+
+__copyright__ = "Thinnect Inc. 2021"
+__license__ = "MIT"
+
+
 from codecs import decode
-import logging
 import time
 
-from moteconnection.message import Message
 from uptime import uptime
 
 from moteannouncement.deva_packets.v2 import DeviceAnnouncementPacket, RadioTechnologies
 
-
+import logging
 logger = logging.getLogger(__name__)
 
 
@@ -179,7 +183,7 @@ class Announcer(object):
 
             self._announcement_counter += 1
             self._last_announcement = time.time()
-            message = Message(0xDA, 0xFFFF, packet.serialize())
+            message = (0xFFFF, packet.serialize())
             logger.debug('Constructed announcement message: %s', message)
             return message
 

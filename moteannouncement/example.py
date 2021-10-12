@@ -7,6 +7,9 @@ import time
 import sys
 import os
 
+from mistconnection.connection import Connection as MistConnection
+from moteconnection.connection import Connection as MoteConnection
+
 from .deva_receiver import DAReceiver
 from .utils import strtime
 
@@ -60,13 +63,14 @@ def setup_logging(default_path="", default_level=logging.INFO, env_key='LOG_CFG'
         console.setFormatter(logging.Formatter('%(name)-12s: %(levelname)-8s %(message)s'))
         logging.getLogger().addHandler(console)  # add the handler to the root logger
         logging.getLogger().setLevel(default_level)
+        logging.getLogger("pika").propagate = False  # quiet pika
 
 
 def main():
     import argparse
 
     def arg_hex2int(v):
-        return int(v, 0)
+        return int(v, 16)
 
     parser = argparse.ArgumentParser(
         description="DEVA Receiver",
@@ -74,7 +78,7 @@ def main():
     )
     parser.add_argument("destination", default=None, nargs="?", type=arg_hex2int, help="Query destination")
     parser.add_argument("--connection", default="sf@localhost:9002",
-                        help="Connection string, like sf@localhost:9002 or serial@/dev/ttyUSB0:115200")
+                        help="Connection string, like amqps://user:pass@server or sf@localhost:9002 or serial@/dev/ttyUSB0:115200")
     parser.add_argument("--address", default=0x1234, type=arg_hex2int, help="Own address")
     parser.add_argument("--group", default=0xff, type=arg_hex2int, help="AM Group")
     parser.add_argument("--period", default=10, type=int, help="Request period")
@@ -90,17 +94,33 @@ def main():
 
     signal.signal(signal.SIGINT, kbi_handler)
 
-    with DAReceiver(args.connection, args.address, args.group, args.period) as dar:
+    if args.connection.startswith("amqp"):
+        connection = MistConnection(args.connection, "mistx", args.address, None)
+        connection.connect()
+    else:
+        connection = MoteConnection()
+        connection.connect(args.connection, reconnect=10, connected=None, disconnected=None)
+
+    with DAReceiver(connection, args.address, args.group, args.period) as dar:
 
         if args.destination is not None:
-            dar.query(addr=args.destination,
-                      info=True, description=True, features=True)
+            if isinstance(connection, MoteConnection):
+                dar.query(addr=args.destination,
+                        info=True, description=True, features=True)
+            else:
+                dar.query(guid=args.destination,
+                        info=True, description=True, features=True)
 
         while not interrupted.is_set():
             time.sleep(0.01)
             response = dar.poll()
             if response is not None:
                 print_green("{}| {}".format(strtime(time.time()), response))
+
+    if isinstance(connection, MoteConnection):
+        connection.join()
+    else:
+        connection.close()
 
 
 if __name__ == "__main__":

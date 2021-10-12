@@ -1,5 +1,8 @@
 """deva_receiver.py: DeviceAnnouncement receiver with query capabilities"""
-from __future__ import print_function, unicode_literals
+
+__copyright__ = "Thinnect Inc. 2021"
+__author__ = "Raido Pahtma, Kaarel Ratas"
+__license__ = "MIT"
 
 from codecs import decode, encode
 from collections import OrderedDict
@@ -8,9 +11,14 @@ import time
 import queue
 import six
 
-from moteconnection.message import MessageDispatcher
-from moteconnection.connection import Connection
+from mistconnection.connection import Connection as MistConnection
+from mistconnection.message import Message as MistMessage
+
+from moteconnection.message import MessageDispatcher, Message as MoteMessage
+from moteconnection.connection import Connection as MoteConnection
 from serdepa.exceptions import DeserializeError
+
+from mistconnection.eui64 import EUI64
 
 from .announcer import Announcer
 from .deva_packets import deserialize, DeviceAnnouncementPacketBase
@@ -23,13 +31,10 @@ import logging
 log = logging.getLogger(__name__)
 
 
-__author__ = "Raido Pahtma, Kaarel Ratas"
-__license__ = "MIT"
-
-
 class NetworkAddressTranslator(dict):
     """
-    An object to hold a guid to network address mappings.
+    An object to hold a guid to network address mappings and latest packet that
+    updated the mapping.
     """
     def __init__(self):
         super(NetworkAddressTranslator, self).__init__()
@@ -53,7 +58,8 @@ class NetworkAddressTranslator(dict):
 
     def add_info(self, source, packet):
         assert isinstance(packet, DeviceAnnouncementPacketBase)
-        guid = decode(encode(packet.guid.serialize(), "hex")).upper()
+
+        guid = EUI64(packet.guid.serialize().hex())  # FIXME there should be an easier way?
         if guid not in self or self[guid] != source:
             self[guid] = source
             self[source] = guid
@@ -67,31 +73,60 @@ class NetworkAddressTranslator(dict):
         return dict(self._original_data)
 
 
+class MistAddressTranslator(dict):
+    """
+    An object to use in place of NetworkAddressTranslator when translation not needed.
+    """
+    def __init__(self):
+        super(MistAddressTranslator, self).__init__()
+        self._original_data = {}
+
+    def __getitem__(self, key):
+        return key
+
+    def add_info(self, source, packet):
+        assert isinstance(packet, DeviceAnnouncementPacketBase)
+        self._original_data[source] = packet
+
+    @property
+    def announcements(self):
+        return dict(self._original_data)
+
+
 class DAReceiver(object):
     """
     :type address: six.text_type
     :type _pending_queries: dict[int, Query]
     """
 
-    def __init__(self, connection_string, address, group, period, mapping=None):
+    def __init__(self, connection, address, group, period, mapping=None):
         """
-
-        :param six.text_type connection_string: Connection string, like sf@localhost:9002 or
-                serial@/dev/ttyUSB0:115200
+        :param ??? connection: A connection object.
         :param int address: The network address of the MURP on the gateway (eg 0x0310)
         :param int period: The period of
         :param mapping:
         """
-        if mapping is None:
-            mapping = NetworkAddressTranslator()
+
         self.address = address
         self.group = group
-        self._connection_string = connection_string
-
-        self._connection = None
-        self._dispatcher = None
 
         self._incoming = queue.Queue()
+
+        if isinstance(connection, MistConnection):
+            connection.register_receiver(0x3FDA, self._incoming)
+            self._dispatcher = connection
+            if mapping is None:
+                mapping = MistAddressTranslator()
+        elif isinstance(connection, MoteConnection):
+            self._dispatcher = MessageDispatcher(self.address, self.group)
+            self._dispatcher.register_receiver(0xDA, self._incoming)
+            connection.register_dispatcher(self._dispatcher)
+            if mapping is None:
+                mapping = NetworkAddressTranslator()
+        else:
+            raise ValueError("Connection type not recognized!")
+
+        self._connection = connection
 
         self._timestamp = time.time()
 
@@ -104,25 +139,7 @@ class DAReceiver(object):
 
         self._announcer = Announcer()
 
-        self._connected = False
-
-    @property
-    def connection(self):
-        if self._connection is None:
-            self._connection = Connection()
-            self._connection.connect(self._connection_string,
-                                     reconnect=10,
-                                     connected=self.connected,
-                                     disconnected=self.disconnected)
-            self._connection.register_dispatcher(self.dispatcher)
-        return self._connection
-
-    @property
-    def dispatcher(self):
-        if self._dispatcher is None:
-            self._dispatcher = MessageDispatcher(self.address, self.group)
-            self._dispatcher.register_receiver(0xDA, self._incoming)
-        return self._dispatcher
+        self._connected = True   # FIXME register connect event
 
     @property
     def mapping(self):
@@ -139,15 +156,13 @@ class DAReceiver(object):
         self._connected = False
 
     def __enter__(self):
-        assert self.connection is not None  # creates and establishes the connection
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self.connection.join()
+        pass
 
     def poll(self):
         """
-
         :return:
         :rtype: None | moteannouncement.response.Response
         """
@@ -163,9 +178,11 @@ class DAReceiver(object):
         except Exception:
             log.exception('Exception while generating self-announcement for the Mist(tm) network.')
         else:
+            pass
+            # TODO fixme addressing etc
             if announcement_message is not None:
                 log.info('Sending announcement to the Mist(tm) network.')
-                self.connection.send(announcement_message)
+                self._connection.send(announcement_message)
 
         # Remove queries that are done
         for destination, query in dict(self._pending_queries).items():
@@ -184,11 +201,19 @@ class DAReceiver(object):
                     # check if the query has an outgoing message ready
                     out_message = query.get_message()
                     if out_message is not None:
+                        if isinstance(self._connection, MistConnection):
+                            mm = MistMessage()
+                            mm.amid = 0x3FDA
+                            mm.destination = out_message[0]
+                            mm.payload = out_message[1]
+                            out_message = mm
+                        else:
+                            out_message = MoteMessage(0xDA, out_message[0], out_message[1])
                         break
 
                 if out_message is not None:
                     log.debug("Outgoing message: %s", out_message)
-                    self.connection.send(out_message)
+                    self._connection.send(out_message)
 
                 self._timestamp = time.time()
             self._last_pass_received = False
@@ -210,16 +235,19 @@ class DAReceiver(object):
                     self._network_address_mapping.add_info(incoming_message.source, packet)
 
                 response = None
-                guid = packet.guid.serialize().hex().upper()
+                guid = EUI64(packet.guid.serialize().hex())
                 # if this packet belongs to a pending query, let it decide
                 if guid in self._pending_queries:
+                    log.debug("guid")
                     response = self._pending_queries[guid].receive_packet(packet)
                 # Fall back to the source address as key
                 elif incoming_message.source in self._pending_queries:
+                    log.debug("source")
                     response = self._pending_queries[incoming_message.source].receive_packet(packet)
                 # otherwise emit it
                 # Should be a DeviceAnnouncementPacket, but other agents may also be requesting data
                 elif isinstance(packet, DeviceAnnouncementPacketBase):
+                    log.debug("random")
                     response = Response([packet])
 
                 # Make sure to remember the feature_list_hash -> features combination for future reference
@@ -231,6 +259,9 @@ class DAReceiver(object):
     def query(self, guid=None, addr=None, info=False, description=False, features=False):
         if guid is None and addr is None or guid is not None and addr is not None:
             raise ValueError("Provide either guid or address.")
+
+        if guid is not None:
+            guid = EUI64(guid)
 
         destination = guid if guid is not None else addr
         if (
@@ -271,7 +302,7 @@ class DAReceiver(object):
         :return:
         """
         if self._announcer.guid is None:
-            self._announcer.guid = guid
+            self._announcer.guid = EUI64(guid)
             self._announcer.uuid = uuid
             if position_type is not None:
                 self._announcer.position_type = position_type
@@ -314,7 +345,6 @@ class DAReceiver(object):
         :returns: Deserialized packet
         """
         if len(message.payload) > 0:
-
             try:
                 packet = deserialize(message.payload)
             except (ValueError, DeserializeError):
