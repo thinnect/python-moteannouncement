@@ -10,6 +10,7 @@ from .deva_packets import (
     DeviceRequestPacketBase, v2
 )
 from .response import Response
+from .utils import GenericPacket
 
 
 logger = logging.getLogger(__name__)
@@ -108,7 +109,7 @@ class Query(object):
                 d = None
             if d is not None:
                 return {
-                    "message": (self.destination_address, d.serialize()),
+                    "message": GenericPacket(self.destination_address, d.serialize()),
                     "taken_at": 0
                 }
 

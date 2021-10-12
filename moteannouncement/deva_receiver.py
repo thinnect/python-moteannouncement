@@ -42,12 +42,12 @@ class NetworkAddressTranslator(dict):
         self._original_data = {}
 
     def __getitem__(self, key):
-        if isinstance(key, six.string_types) and len(key) == 16:
+        if isinstance(key, EUI64):
             try:
                 return super(NetworkAddressTranslator, self).__getitem__(key)
             except KeyError:
-                log.warning("Unknown GUID %s. Using default mapping of last four digits: %s", key, key[-4:])
-                return int(key[-4:], 16)
+                log.warning("Unknown GUID %s. Using default mapping of last four digits: %s", key, str(key)[-4:])
+                return int(str(key)[-4:], 16)
         elif isinstance(key, int):
             try:
                 return super(NetworkAddressTranslator, self).__getitem__(key)
