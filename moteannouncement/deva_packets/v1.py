@@ -1,15 +1,12 @@
 import uuid
 from codecs import decode, encode
 
-import six
-
 from serdepa import Array, List, nx_uint8, nx_uint32, nx_int32, nx_int64
 
 from moteannouncement.deva_packets import base
 from moteannouncement.utils import chunk, strtime
 
 
-@six.python_2_unicode_compatible
 class DeviceAnnouncementPacket(base.DeviceAnnouncementPacketBase):
     VERSION = 0x01
     _fields_ = [
@@ -68,7 +65,6 @@ class DeviceAnnouncementPacket(base.DeviceAnnouncementPacketBase):
         )
 
 
-@six.python_2_unicode_compatible
 class DeviceDescriptionPacket(base.DeviceDescriptionPacketBase):
     VERSION = 0x01
     _fields_ = [
@@ -104,7 +100,6 @@ class DeviceDescriptionPacket(base.DeviceDescriptionPacketBase):
         )
 
 
-@six.python_2_unicode_compatible
 class DeviceFeaturesPacket(base.DeviceFeaturesPacketBase):
     VERSION = 0x01
     _fields_ = [

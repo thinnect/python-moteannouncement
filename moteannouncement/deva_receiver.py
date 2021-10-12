@@ -9,7 +9,6 @@ from collections import OrderedDict
 import time
 
 import queue
-import six
 
 from mistconnection.connection import Connection as MistConnection
 from mistconnection.message import Message as MistMessage
@@ -68,7 +67,7 @@ class NetworkAddressTranslator(dict):
     @property
     def announcements(self):
         """
-        :rtype: dict[six.text_type, DeviceAnnouncementPacket | DeviceAnnouncementPacketV2]
+        :rtype: dict[EUI64, DeviceAnnouncementPacket | DeviceAnnouncementPacketV2]
         """
         return dict(self._original_data)
 
@@ -95,7 +94,7 @@ class MistAddressTranslator(dict):
 
 class DAReceiver(object):
     """
-    :type address: six.text_type
+    :type address: int, EUI64
     :type _pending_queries: dict[int, Query]
     """
 

@@ -2,7 +2,6 @@ import uuid
 from codecs import decode, encode
 
 from enum import Enum
-import six
 
 from serdepa import Array, List, nx_uint8, nx_uint32, nx_int32, nx_int64
 
@@ -33,7 +32,6 @@ class RadioTechnologies(Enum):
             raise ValueError('Unknown radio technology value: {}'.format(self))
 
 
-@six.python_2_unicode_compatible
 class DeviceAnnouncementPacket(base.DeviceAnnouncementPacketBase):
     VERSION = 0x02
     _fields_ = [
@@ -119,7 +117,6 @@ class DeviceAnnouncementPacket(base.DeviceAnnouncementPacketBase):
         )
 
 
-@six.python_2_unicode_compatible
 class DeviceDescriptionPacket(base.DeviceDescriptionPacketBase):
     VERSION = 0x02
     _fields_ = [
@@ -163,7 +160,6 @@ class DeviceDescriptionPacket(base.DeviceDescriptionPacketBase):
         )
 
 
-@six.python_2_unicode_compatible
 class DeviceFeaturesPacket(base.DeviceFeaturesPacketBase):
     VERSION = 0x02
     _fields_ = [

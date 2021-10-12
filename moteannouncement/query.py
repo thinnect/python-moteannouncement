@@ -1,8 +1,6 @@
 from itertools import chain
 import time
-import logging
 
-import six
 from enum import Enum
 
 from .deva_packets import (
@@ -12,11 +10,10 @@ from .deva_packets import (
 from .response import Response
 from .utils import GenericPacket
 
-
+import logging
 logger = logging.getLogger(__name__)
 
 
-@six.python_2_unicode_compatible
 class Query(object):
 
     class State(Enum):
