@@ -2,7 +2,6 @@ git+https://github.com/proactivity-lab/python-moteconnection.git
 git+https://github.com/thinnect/python-mistconnection.git@initial
 git+https://github.com/thinnect/serdepa.git
 pytz
-enum34
 uptime
 
 # Tests
