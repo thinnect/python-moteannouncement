@@ -6,6 +6,10 @@ import datetime
 import pytz
 import time
 from warnings import warn
+from collections import namedtuple
+
+
+GenericPacket = namedtuple("GenericPacket", ("destination", "payload"))
 
 
 def strtime(utc_timestamp):

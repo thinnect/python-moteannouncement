@@ -1,12 +1,16 @@
-from __future__ import unicode_literals
 
 from unittest import TestCase
 
+import queue
+
+from codecs import decode
+
 from mock import patch, MagicMock
-import six
-from six.moves import queue
 
 from moteconnection.message import Message
+from moteconnection.connection import Connection as MoteConnection
+
+from mistconnection.eui64 import EUI64
 
 from ..deva_receiver import NetworkAddressTranslator, Query, DAReceiver
 from ..deva_packets.v1 import (
@@ -24,20 +28,26 @@ class NetworkAddressTranslatorTester(TestCase):
         del self.network_address_translator
 
     def test_invalid_getitem(self):
-        self.assertRaises(TypeError, self.network_address_translator.__getitem__, '0123456789ABCDEF9')
+        self.assertRaises(TypeError,
+                          self.network_address_translator.__getitem__,
+                          '0123456789ABCDEF9')
 
     @patch('moteannouncement.deva_receiver.log')
     def test_default_mapping(self, logger):
-        self.assertEqual(self.network_address_translator['0011223344556677'], 0x6677)
+        self.assertEqual(self.network_address_translator[EUI64('0011223344556677')], 0x6677)
         self.assertTrue(logger.warning.called)
 
     def test_add_info(self):
         packet = MagicMock(spec=DeviceAnnouncementPacket, arrived=None)
-        packet.guid.serialize.return_value = six.binary_type(b'\x00\x00\x00\x00\x00\x00\xAA\xFF')
-        self.assertEqual(self.network_address_translator['000000000000AAFF'], 0xAAFF)
+        packet.guid.serialize \
+            .return_value = b'\x00\x00\x00\x00\x00\x00\xAA\xFF'
+        self.assertEqual(self.network_address_translator[EUI64('000000000000AAFF')],
+                         0xAAFF)
         self.network_address_translator.add_info(0xAABB, packet)
-        self.assertIs(self.network_address_translator.announcements['000000000000AAFF'], packet)
-        self.assertEqual(self.network_address_translator['000000000000AAFF'], 0xAABB)
+        self.assertIs(self.network_address_translator.announcements[EUI64('000000000000AAFF')],
+                      packet)
+        self.assertEqual(self.network_address_translator[EUI64('000000000000AAFF')],
+                         0xAABB)
 
 
 # noinspection PyTypeChecker
@@ -48,7 +58,8 @@ class QueryTester(TestCase):
         self.mapping = MagicMock(spec=NetworkAddressTranslator)
         self.mapping.__getitem__.return_value = 0x0101
         self.mapping.__contains__.return_value = True
-        self.mapping.announcements.__getitem__.return_value.feature_list_hash = 0x12341234
+        self.mapping.announcements.__getitem__.return_value \
+            .feature_list_hash = 0x12341234
         self.feature_map = FeatureMap()
 
     def tearDown(self):
@@ -60,7 +71,8 @@ class QueryTester(TestCase):
         features = ['ec2c01ff-22cd-4885-8473-117552229e9e']
         requests = [Query.State.query, Query.State.list_features]
         self.feature_map['12341234'] = features
-        query = Query('000000000000FF10', None, requests, self.mapping, self.feature_map, retry=1)
+        query = Query('000000000000FF10', None, requests, self.mapping,
+                      self.feature_map, retry=1)
 
         self.assertIs(query.state, Query.State.query)
 
@@ -81,7 +93,8 @@ class QueryTester(TestCase):
     def test_info_query(self, time_mock, response_mock):
         time_mock.time.side_effect = [1, 1, 2, 10]
         requests = [Query.State.query]
-        query = Query('000000000000AAFF', None, requests, self.mapping, self.feature_map, retry=1)
+        query = Query('000000000000AAFF', None, requests, self.mapping,
+                      self.feature_map, retry=1)
 
         self.assertIs(query.state, Query.State.query)
 
@@ -114,7 +127,8 @@ class QueryTester(TestCase):
     def test_description_query(self, time_mock, response_mock):
         time_mock.time.side_effect = [1]
         requests = [Query.State.describe]
-        query = Query('000000000000AAFF', None, requests, self.mapping, self.feature_map, retry=1)
+        query = Query('000000000000AAFF', None, requests, self.mapping,
+                      self.feature_map, retry=1)
 
         self.assertIs(query.state, Query.State.describe)
 
@@ -139,7 +153,8 @@ class QueryTester(TestCase):
     def test_features_query_single(self, time_mock, response_mock):
         time_mock.time.side_effect = [1, 2, 3]
         requests = [Query.State.list_features]
-        query = Query('000000000000AAFF', None, requests, self.mapping, self.feature_map, retry=1)
+        query = Query('000000000000AAFF', None, requests, self.mapping,
+                      self.feature_map, retry=1)
 
         self.assertIs(query.state, Query.State.list_features)
 
@@ -197,7 +212,8 @@ class QueryTester(TestCase):
     def test_features_query_multiple(self, time_mock, response_mock):
         time_mock.time.side_effect = [1, 2]
         requests = [Query.State.list_features]
-        query = Query('000000000000AAFF', None, requests, self.mapping, self.feature_map, retry=1)
+        query = Query('000000000000AAFF', None, requests, self.mapping,
+                      self.feature_map, retry=1)
 
         self.assertIs(query.state, Query.State.list_features)
 
@@ -241,8 +257,10 @@ class QueryTester(TestCase):
 
     def test_all_query(self, time_mock, response_mock):
         time_mock.time.side_effect = [1, 2, 3, 4]
-        requests = [Query.State.query, Query.State.describe, Query.State.list_features]
-        query = Query('000000000000AAFF', None, requests, self.mapping, self.feature_map, retry=1)
+        requests = [Query.State.query, Query.State.describe,
+                    Query.State.list_features]
+        query = Query('000000000000AAFF', None, requests, self.mapping,
+                      self.feature_map, retry=1)
 
         self.assertIs(query.state, Query.State.query)
 
@@ -318,7 +336,8 @@ class QueryTester(TestCase):
         requests = [Query.State.describe, Query.State.list_features]
         self.mapping.__contains__.return_value = False
 
-        query = Query('000000000000AAFF', None, list(requests), self.mapping, self.feature_map, retry=1)
+        query = Query('000000000000AAFF', None, list(requests),
+                      self.mapping, self.feature_map, retry=1)
 
         self.assertEqual(query._request, [Query.State.query]+requests)
 
@@ -395,11 +414,12 @@ class QueryTester(TestCase):
 
 @patch('moteannouncement.deva_receiver.Query')
 @patch('moteannouncement.deva_receiver.MessageDispatcher')
-@patch('moteannouncement.deva_receiver.Connection')
-@patch('moteannouncement.deva_receiver.Queue')
+#@patch('moteannouncement.deva_receiver.Connection')
+@patch('moteannouncement.deva_receiver.queue')
 class DeviceAnnouncementReceiverTester(TestCase):
 
-    def test_receive(self, queue_mock, connection_mock, message_dispatcher_mock, query_mock):
+    def test_receive(self, queue_mock,
+                     message_dispatcher_mock, query_mock):
         message_mock = MagicMock(
             spec=Message,
             payload=(
@@ -419,9 +439,12 @@ class DeviceAnnouncementReceiverTester(TestCase):
                 b'\xAF\x90\xAF\x90'                                                     # feature_list_hash
             )
         )
-        queue_mock.Queue.return_value.get.side_effect = [message_mock, queue.Empty()]
+        connection_mock = MagicMock(spec=MoteConnection)
+        queue_mock.Queue.return_value.get.side_effect = [message_mock,
+                                                         queue.Empty()]
         queue_mock.Empty = queue.Empty
-        receiver = DAReceiver('', 0x0001, 1)
+        receiver = DAReceiver(connection_mock, 0x0001, 0xFF, 1)
+        receiver.connected()
         response = receiver.poll()
         self.assertIsNone(response.features)
         self.assertIsNone(response.description)
@@ -429,7 +452,8 @@ class DeviceAnnouncementReceiverTester(TestCase):
         response = receiver.poll()
         self.assertIs(response, None)
 
-    def test_receive_v2(self, queue_mock, connection_mock, message_dispatcher_mock, query_mock):
+    def test_receive_v2(self, queue_mock,
+                        message_dispatcher_mock, query_mock):
         message_mock = MagicMock(
             spec=Message,
             payload=(
@@ -452,9 +476,12 @@ class DeviceAnnouncementReceiverTester(TestCase):
                 b'\xAF\x90\xAF\x90'                                                     # feature_list_hash
             )
         )
-        queue_mock.Queue.return_value.get.side_effect = [message_mock, queue.Empty()]
+        connection_mock = MagicMock(spec=MoteConnection)
+        queue_mock.Queue.return_value.get.side_effect = [message_mock,
+                                                         queue.Empty()]
         queue_mock.Empty = queue.Empty
-        receiver = DAReceiver('', 0x0001, 1)
+        receiver = DAReceiver(connection_mock, 0x0001, 0xFF, 1)
+        receiver.connected()
         response = receiver.poll()
         self.assertIsNone(response.features)
         self.assertIsNone(response.description)
@@ -462,27 +489,77 @@ class DeviceAnnouncementReceiverTester(TestCase):
         response = receiver.poll()
         self.assertIs(response, None)
 
-    def test_with_statement_exit(self, queue_mock, connection_mock, message_dispatcher_mock, query_mock):
-
+    def test_with_statement_exit(self, queue_mock,
+                                 message_dispatcher_mock, query_mock):
+        connection_mock = MagicMock(spec=MoteConnection)
         try:
-            with DAReceiver('', 0x0001, 1):
+            with DAReceiver(connection_mock, 0x0001, 0xFF, 1) as receiver:
                 raise AssertionError()
         except AssertionError:
             pass
 
         message_dispatcher_mock.assert_called_with(0x0001, 0xFF)
-        message_dispatcher_mock.return_value.register_receiver.assert_called_with(0xDA, queue_mock.Queue.return_value)
+        message_dispatcher_mock.return_value.register_receiver \
+            .assert_called_with(0xDA, queue_mock.Queue.return_value)
 
-        connection_mock.assert_called()
-        connection_mock.return_value.connect.assert_called_with('', reconnect=10)
-        connection_mock.return_value.join.assert_called_with()
+    def test_query_creation(self, queue_mock,
+                            message_dispatcher_mock, query_mock):
+        connection_mock = MagicMock(spec=MoteConnection)
 
-    def test_query_creation(self, queue_mock, connection_mock, message_dispatcher_mock, query_mock):
-        receiver = DAReceiver('', 0x0001, 1)
+        receiver = DAReceiver(connection_mock, 0x0001, 0xFF, 1)
         receiver.query('0000000000000101', info=True, features=True)
 
         query_mock.assert_called_with(
-            '0000000000000101', None,
+            EUI64('0000000000000101'), None,
             [query_mock.State.query, query_mock.State.list_features],
             receiver._network_address_mapping, receiver.feature_map, 1
         )
+
+
+@patch('moteannouncement.deva_receiver.queue')
+class DeviceAnnouncementUnexpectedDescriptionTester(TestCase):
+
+    def test_unexpected_description(self, queue_mock):
+        """
+        Test unexpected description packet when no announcement has been received.
+
+        Test scenario:
+        * No announcement packet has been cached.
+        * An active query exists for 8888888888888888
+        * A Device Description packet is received
+
+        Expected results:
+        * No error is thrown
+        """
+        message_mock = MagicMock(
+            spec=DeviceDescriptionPacket,
+            header=DeviceDescriptionPacket.DEVA_DESCRIPTION,
+            source=0x8888,
+            payload=decode(
+                '01'                                    # header
+                '02'                                    # version
+                '8888888888888888'                      # guid
+                '00000001'                              # boot number
+                '28ce63414906404abd548da44477dc4a'      # platform
+                '00' '01' '02'                          # hardware version
+                '6a74c3fd35384b5a8d6e42b71bfdfe4e'      # manufacturer
+                '0000000000abcdef'                      # production
+                '0000000000abcdef'                      # ident timestamp
+                '02' '03' '04',                         # software version
+                'hex'
+            )
+        )
+
+        queue_mock.Queue.return_value.get.side_effect = [message_mock, queue.Empty()]
+        queue_mock.Empty = queue.Empty
+
+        connection_mock = MagicMock(spec=MoteConnection)
+
+        receiver = DAReceiver(connection_mock, 0x0001, 0xFF, 1)
+        receiver.connected()
+
+        receiver.query('8888888888888888',
+                       info=False, description=True, features=True)
+
+        receiver.poll()
+        receiver.poll()

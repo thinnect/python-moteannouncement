@@ -2,14 +2,12 @@ from __future__ import unicode_literals
 
 from unittest import TestCase
 
-import six
-
 from ..utils import strtime, chunk
 
 
 class TimeFormatTester(TestCase):
     def test_strtime(self):
-        self.assertEqual(six.text_type(strtime(0)), '1970-01-01T00:00:00')
+        self.assertEqual(str(strtime(0)), '1970-01-01T00:00:00')
 
 
 class ChunkTester(TestCase):

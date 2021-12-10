@@ -1,23 +1,19 @@
 from itertools import chain
 import time
-import logging
 
-import six
 from enum import Enum
-
-from moteconnection.message import Message
 
 from .deva_packets import (
     DeviceAnnouncementPacketBase, DeviceDescriptionPacketBase, DeviceFeaturesPacketBase,
     DeviceRequestPacketBase, v2
 )
 from .response import Response
+from .utils import GenericPacket
 
-
+import logging
 logger = logging.getLogger(__name__)
 
 
-@six.python_2_unicode_compatible
 class Query(object):
 
     class State(Enum):
@@ -79,7 +75,6 @@ class Query(object):
         Returns an outgoing message
 
         :return: Message to be sent
-        :rtype: moteconnection.message.Message | None
         """
         if self.state is not Query.State.done:
             now = time.time()
@@ -111,7 +106,7 @@ class Query(object):
                 d = None
             if d is not None:
                 return {
-                    "message": Message(0xDA, self.destination_address, d.serialize()),
+                    "message": GenericPacket(self.destination_address, d.serialize()),
                     "taken_at": 0
                 }
 
@@ -160,7 +155,8 @@ class Query(object):
             raise ValueError("Unknown packet {}".format(packet.__class__.__name__))
 
         if not isinstance(packet, DeviceAnnouncementPacketBase) and not self._incoming_messages:
-            self._incoming_messages = [self._mapping.announcements[self._destination]]
+            if self._destination in self._mapping.announcements:
+                self._incoming_messages = [self._mapping.announcements[self._destination]]
         self._incoming_messages.append(packet)
         self._last_contact = packet.arrived
 

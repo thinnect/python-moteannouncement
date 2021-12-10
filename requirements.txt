@@ -1,0 +1,9 @@
+git+https://github.com/proactivity-lab/python-moteconnection.git
+git+https://github.com/thinnect/python-mistconnection.git
+git+https://github.com/thinnect/serdepa.git
+pytz
+uptime
+
+# Tests
+nose
+mock

@@ -4,8 +4,6 @@ from collections import namedtuple, OrderedDict
 import datetime
 import json
 
-import six
-
 from .deva_packets import (
     DeviceAnnouncementPacketBase, DeviceDescriptionPacketBase, DeviceFeaturesPacketBase, v2
 )
@@ -118,4 +116,4 @@ class Response(object):
 
 
 def _get_uuid(byte_string):
-    return six.text_type(uuid.UUID(encode(byte_string, "hex").decode()))
+    return str(uuid.UUID(encode(byte_string, "hex").decode()))

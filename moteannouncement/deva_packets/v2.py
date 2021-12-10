@@ -1,7 +1,7 @@
 import uuid
+from codecs import decode, encode
 
 from enum import Enum
-import six
 
 from serdepa import Array, List, nx_uint8, nx_uint32, nx_int32, nx_int64
 
@@ -32,7 +32,6 @@ class RadioTechnologies(Enum):
             raise ValueError('Unknown radio technology value: {}'.format(self))
 
 
-@six.python_2_unicode_compatible
 class DeviceAnnouncementPacket(base.DeviceAnnouncementPacketBase):
     VERSION = 0x02
     _fields_ = [
@@ -108,17 +107,16 @@ class DeviceAnnouncementPacket(base.DeviceAnnouncementPacketBase):
     def __str__(self):
         return "{:02X}:{:02X} {} b:{}@{} {}+{} ({}) a:{} [{}:{};{};{}] {}({:x}) <{:08x}>".format(
             self.header, self.version,
-            bytes(self.guid.serialize()).encode("hex").upper(),
+            decode(encode(self.guid.serialize(), "hex")).upper(),
             self.boot_number, strtime(self.boot_time),
             self.lifetime, self.uptime,
             self.announcement,
-            uuid.UUID(bytes(self.uuid.serialize()).encode("hex")),
+            uuid.UUID(decode(encode(self.uuid.serialize(), "hex"))),
             self.position_type, self.latitude, self.longitude, self.elevation,
             strtime(self.ident_timestamp), self.ident_timestamp, self.feature_list_hash
         )
 
 
-@six.python_2_unicode_compatible
 class DeviceDescriptionPacket(base.DeviceDescriptionPacketBase):
     VERSION = 0x02
     _fields_ = [
@@ -152,17 +150,16 @@ class DeviceDescriptionPacket(base.DeviceDescriptionPacketBase):
     def __str__(self):
         return "{:02X}:{:02X} {} b:{} p:{} m:{} @{} sw:{} hw:{} {}({:x})".format(
             self.header, self.version,
-            bytes(self.guid.serialize()).encode("hex").upper(),
+            decode(encode(self.guid.serialize(), "hex")).upper(),
             self.boot_number,
-            uuid.UUID(bytes(self.platform.serialize()).encode("hex")),
-            uuid.UUID(bytes(self.manufacturer.serialize()).encode("hex")),
+            uuid.UUID(decode(encode(self.platform.serialize(), "hex"))),
+            uuid.UUID(decode(encode(self.manufacturer.serialize(), "hex"))),
             strtime(self.production),
             self.sw_version, self.hw_version,
             strtime(self.ident_timestamp), self.ident_timestamp
         )
 
 
-@six.python_2_unicode_compatible
 class DeviceFeaturesPacket(base.DeviceFeaturesPacketBase):
     VERSION = 0x02
     _fields_ = [
@@ -180,7 +177,7 @@ class DeviceFeaturesPacket(base.DeviceFeaturesPacketBase):
     def __str__(self):
         s = "{:02X}:{:02X} {} b:{} features {}/{}".format(
             self.header, self.version,
-            bytes(self.guid.serialize()).encode("hex").upper(),
+            decode(encode(self.guid.serialize(), "hex")).upper(),
             self.boot_number,
             self.offset, self.total
         )
@@ -188,7 +185,7 @@ class DeviceFeaturesPacket(base.DeviceFeaturesPacketBase):
 
     @property
     def feature_uuids(self):
-        ftrs = six.binary_type(self.features.serialize()).encode("hex")
+        ftrs = decode(encode(self.features.serialize(), "hex"))
         return [str(uuid.UUID(u)) for u in chunk(ftrs, 32)]
 
 

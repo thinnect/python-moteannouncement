@@ -6,11 +6,11 @@ Includes a basic test application for querying devices directly.
 ## Basics of the API
 
 The `DAReceiver` class is constructed using the connection string
-for the connection, the address of the radio device (`int`) and
-the minimum send period:
+for the connection, the address of the radio device (`int`), group of
+the radio device (`int`) and the minimum send period:
 
 ```
-receiver = DAReceiver('sf@localhost:9002', 0x1234, 10)
+receiver = DAReceiver('sf@localhost:9002', 0x1234, 0x2222, 10)
 ```
 
 Then, the devices in the network can be queried by using the `query`
@@ -86,10 +86,12 @@ from moteannouncement import DAReceiver
 import time
 
 conn = 'sf@localhost:9002'
-addr = 0x0315 # address of the device running this application
+addr = 0x0315  # address of the device running this application
+grp = 0x0022  # PAN/group of the device running this application
 receiver = DAReceiver(
     connection_string=conn,
     address=addr,
+    group=grp,
     period=10
 )
 

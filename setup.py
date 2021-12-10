@@ -26,7 +26,7 @@ setup(name="moteannouncement",
       platforms=["any"],
       packages=find_packages(),
       install_requires=[
-          "moteconnection", "serdepa", "pytz", "six", "enum34", "uptime"
+          "moteconnection", "mistconnection", "serdepa", "pytz", "uptime"
       ],
       tests_require=["nose", "mock"],
       scripts=[path.join("bin", "moteannouncements")],
