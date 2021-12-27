@@ -279,6 +279,11 @@ class DAReceiver(object):
             if destination not in self._pending_queries or not self._pending_queries[destination].is_equivalent(query):
                 log.debug('Adding query %s.', query)
                 self._pending_queries[destination] = query
+            else:
+                if guid is not None:
+                    log.debug("Already querying %s", guid)
+                else:
+                    log.debug("Already querying %04X", addr)
         else:
             log.warning("Active query already exists for %s", destination)
 
