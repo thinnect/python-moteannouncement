@@ -13,7 +13,11 @@ GenericPacket = namedtuple("GenericPacket", ("destination", "payload"))
 
 
 def strtime(utc_timestamp):
-    tpl = (datetime.datetime.fromtimestamp(0, tz=pytz.utc) + datetime.timedelta(seconds=utc_timestamp)).timetuple()
+    try:
+        tpl = (datetime.datetime.fromtimestamp(0, tz=pytz.utc) + datetime.timedelta(seconds=utc_timestamp)).timetuple()
+    except OverflowError:
+        warn("Failed to handle utc_timestamp {}, replaced with (-1)".format(utc_timestamp), RuntimeWarning)
+        tpl = (datetime.datetime.fromtimestamp(0, tz=pytz.utc) + datetime.timedelta(seconds=-1)).timetuple()
     return time.strftime("%Y-%m-%dT%H:%M:%S", tpl)
 
 
