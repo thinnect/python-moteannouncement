@@ -65,7 +65,10 @@ class DeviceAnnouncementPacket(base.DeviceAnnouncementPacketBase):
         """
         :rtype: RadioTechnologies
         """
-        return RadioTechnologies(self._radio_technology)
+        try:
+            return RadioTechnologies(self._radio_technology)
+        except ValueError:
+            return RadioTechnologies.UNKNOWN
 
     @radio_technology.setter
     def radio_technology(self, value):
