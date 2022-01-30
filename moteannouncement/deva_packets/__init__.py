@@ -8,6 +8,7 @@ from .base import (
     DeviceAnnouncementPacketBase, DeviceDescriptionPacketBase, DeviceFeaturesPacketBase,
     DeviceRequestPacketBase, DeviceFeatureRequestPacketBase
 )
+from serdepa import DeserializeError
 
 
 def deserialize(payload):
@@ -27,10 +28,20 @@ def deserialize(payload):
         b'\x11\x02': v2.DeviceRequestPacket,
         b'\x12\x02': v2.DeviceFeatureRequestPacket,
     }
-    key = payload[:2]
-    if key in packet_map:
-        packet = packet_map[key]()
+
+    if len(payload) > 2:
+        key = payload[:2]
+        if key in packet_map:
+            packet = packet_map[key]()
+        else:
+            raise ValueError('Invalid packet, bad header: {}'.format(payload))
+
+        try:
+            packet.deserialize(payload)
+        except DeserializeError:
+            raise ValueError('Invalid packet, DeserializeError {}'.format(payload))
+
+        return packet
+
     else:
-        raise ValueError('Invalid packet {}'.format(payload))
-    packet.deserialize(payload)
-    return packet
+        raise ValueError('Invalid packet, too short {}'.format(payload))
